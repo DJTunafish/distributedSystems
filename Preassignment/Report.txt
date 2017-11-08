@@ -1,0 +1,10 @@
+-------------------------------------------
+3D:
+-------------------------------------------
+
+Yes, as can be seen in the screenshot, the second ping 
+has a significantly greater roundtrip time. This is 
+expected, as the topology is set to have a 10ms delay in 
+every link. As all ping messages must traverse two links once in each 
+direction (host -> switch -> host -> switch -> host), one would expect
+RTTs ~40ms, which are observed in the second ping. 
