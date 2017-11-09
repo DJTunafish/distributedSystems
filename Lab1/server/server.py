@@ -286,18 +286,18 @@ if __name__ == '__main__':
         for i in range(1, int(sys.argv[2])+1):
             vessel_list.append("10.1.0.%d" % i) # We can add ourselves, we have a test in the propagation
 
-            board_frontpage_footer_template = open('server/board_frontpage_footer_template.html', 'rb').read()
-            board_frontpage_header_template = open('server/board_frontpage_header_template.html', 'rb').read()
-            boardcontents_template = open('server/boardcontents_template.html', 'rb').read()
-            entry_template = open('server/entry_template.html', 'rb').read()
+        board_frontpage_footer_template = open('server/board_frontpage_footer_template.html', 'rb').read()
+        board_frontpage_header_template = open('server/board_frontpage_header_template.html', 'rb').read()
+        boardcontents_template = open('server/boardcontents_template.html', 'rb').read()
+        entry_template = open('server/entry_template.html', 'rb').read()
 
-            # We launch a server
-            server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list)
-            print("Starting the server on port %d" % PORT_NUMBER)
+        # We launch a server
+        server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list)
+        print("Starting the server on port %d" % PORT_NUMBER)
 
-            try:
-                server.serve_forever()
-            except KeyboardInterrupt:
-                server.server_close()
-                print("Stopping Server")
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            server.server_close()
+            print("Stopping Server")
 #------------------------------------------------------------------------------------------------------
