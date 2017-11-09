@@ -274,6 +274,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 print data['candidates']
             except Exception: 
                 #TODO
+                pass
         else: #If request sent to unrecognized path, respond with error code 404
             self.set_HTTP_headers(404)
 
@@ -302,12 +303,12 @@ if __name__ == '__main__':
     vessel_id = 0
     vessel_list = []
     # Checking the arguments
-    if len(sys.argv) != 5: # 2 args, the script and the vessel name
+    if len(sys.argv) != 3: # 2 args, the script and the vessel name
         print("Arguments: vessel_ID number_of_vessels")
     else:
         # We need to know the vessel IP
         vessel_id = int(sys.argv[1])
-        rank   = randint(0, 1000)
+        rank   = random.randint(0, 1000)
         # We need to write the other vessels IP, based on the knowledge of their number
 
         for i in range(1, int(sys.argv[2])+1):
