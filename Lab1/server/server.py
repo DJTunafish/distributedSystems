@@ -73,12 +73,14 @@ class BlackboardServer(HTTPServer):
         self.store.pop(key, None)
                         #------------------------------------------------------------------------------------------------------
                         # Contact a specific vessel with a set of variables to transmit to it
-    def contact_vessel(self, vessel_ip, path, action, key, value):
+    def contact_vessel(self, vessel_ip, path, data):
         # the Boolean variable we will return
         success = False
         # The variables must be encoded in the URL format, through urllib.urlencode
-        post_content = urlencode({'action': action, 'key': key, 'value': value})
+        #post_content = urlencode({'action': action, 'key': key, 'value': value})
 
+        data['propagate'] = '1'
+        post_content = urlencode(data)
         # the HTTP header must contain the type of data we are transmitting, here URL encoded
         headers = {"Content-type": "application/x-www-form-urlencoded"}
         # We should try to catch errors when contacting the vessel
@@ -107,14 +109,14 @@ class BlackboardServer(HTTPServer):
         return success
 #------------------------------------------------------------------------------------------------------
     # We send a received value to all the other vessels of the system
-    def propagate_value_to_vessels(self, path, action, key, value):
+    def propagate_value_to_vessels(self, path, data):
         # We iterate through the vessel list
         for vessel in self.vessels:
             # We should not send it to our own IP, or we would create an infinite loop of updates
             if vessel != ("10.1.0.%s" % self.vessel_id):
                 # A good practice would be to try again if the request failed
                 # Here, we do it only once
-                self.contact_vessel(vessel, path, action, key, value)
+                self.contact_vessel(vessel, path, data)
 #------------------------------------------------------------------------------------------------------
 
 
@@ -220,33 +222,28 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         if(self.path == '/entries'):
             try:
                 self.server.add_value_to_store(data['entry'][0])
-                key    = self.server.current_key - 1
-                value  = data['entry'][0]
-                action = '/entries'
-                path   = '/entries'
-                #retransmit = True
+                propData = {'entry' : data['entry'][0]}
+                path     = '/entry' 
+                retransmit = True
                 self.set_HTTP_headers(200)
-                print(self.server.store)
             except Exception:
                 self.set_HTTP_headers(400)
         elif(re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
-            print("Recognized as modify/delete post")
-            print(data)
-            #try:
-            if(data['delete'][0] == '1'):
-                print("Recognized as delete post")
-                self.server.delete_value_in_store(int(self.path.split("/")[2]))
-            else:
-                print("Recognized as modify post")
-                self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
-                #TODO: set other retransmission stuff, once that's rewritten
-                #      properly
-                #retransmit = True
-            print("Shit done correctly")
-            self.set_HTTP_headers(200)
-            #except Exception:
-            #    print("Shit done wrongly")
-            #    self.set_HTTP_headers(400)
+            try:
+                if(data['delete'][0] == '1'):
+                    print("Recognized as delete post")
+                    self.server.delete_value_in_store(int(self.path.split("/")[2]))
+                    propData = {'delete' : '1', 'entry' : ''}
+                else:
+                    print("Modify post received") #TODO: Comments
+                    self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
+                    propData = {'delete': '0', 'entry': data['entry'][0]}
+                    
+                path = self.path    
+                retransmit = True
+                self.set_HTTP_headers(200)
+            except Exception:
+                self.set_HTTP_headers(400)
 
         # If we want to retransmit what we received to the other vessels
         # Like this, we will just create infinite loops!
@@ -255,7 +252,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             # We must then create threads if we want to do some heavy computation
             #
             # Random content
-            thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, action, key, value) )
+            thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, propData) )
             # We kill the process if we kill the server
             thread.daemon = True
             # We start the thread
@@ -289,10 +286,10 @@ if __name__ == '__main__':
         for i in range(1, int(sys.argv[2])+1):
             vessel_list.append("10.1.0.%d" % i) # We can add ourselves, we have a test in the propagation
 
-            board_frontpage_footer_template = open('board_frontpage_footer_template.html', 'rb').read()
-            board_frontpage_header_template = open('board_frontpage_header_template.html', 'rb').read()
-            boardcontents_template = open('boardcontents_template.html', 'rb').read()
-            entry_template = open('entry_template.html', 'rb').read()
+            board_frontpage_footer_template = open('server/board_frontpage_footer_template.html', 'rb').read()
+            board_frontpage_header_template = open('server/board_frontpage_header_template.html', 'rb').read()
+            boardcontents_template = open('server/boardcontents_template.html', 'rb').read()
+            entry_template = open('server/entry_template.html', 'rb').read()
 
             # We launch a server
             server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list)
