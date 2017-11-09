@@ -1,0 +1,39 @@
+------------------------------------
+API description: GET requests
+------------------------------------
+
+Route: /
+    Arguments: none
+    Returns  : Full HTML page, displaying the blackboard, entry form, etc.    
+
+
+Route: /board
+    Same as route /
+
+Route: /entries
+    Arguments: none
+    Returns: HTML entities for every entry in the blackboard 
+
+
+------------------------------------
+API description: POST requests
+------------------------------------
+
+Route: /entries
+    Arguments: 
+        entry: Text value to insert into the blackboard
+    Returns: Status code 200, 400 or 404
+    Result: Insert the supplied entry into the blackboard
+
+Route: entries/[id of board entry]
+    Arguments:
+        delete: Flag indicating whether the entry indicated by the route 
+                should be modified or deleted. '1' = delete, '0' = modify
+        entry:  If the delete flag is set to 0, should contain the new value 
+                that the entry should have
+    Returns: Status code 200, 400 or 404
+    Result: If the delete flag is set to 1, removes the indicated entry from
+            the blackboard, if it exists. 
+            Otherwise, sets the indicated entry, if it exists, to the value 
+            supplied in the 'entry' argument.  
+
