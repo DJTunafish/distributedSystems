@@ -23,8 +23,6 @@ board_frontpage_header_template = ""
 boardcontents_template = ""
 entry_template = ""
 
-entries = [("New phone", 1), ("Who dis?", 2)] #TODO: REMOVE, USE STORE
-
 AUTHORS = "Erik Jungmark & Patrick Franz"
 
 BOARD_MESSAGE = "Who runs Barter Town?"
@@ -52,33 +50,40 @@ class BlackboardServer(HTTPServer):
         self.vessel_id = vessel_id
         # The list of other vessels
         self.vessels = vessel_list
-        #------------------------------------------------------------------------------------------------------
-        # We add a value received to the store
+#------------------------------------------------------------------------------------------------------
+    # We add a value received to the store
+    #value: value to be added to the store
+    #Adds a value to the store
+    #Returns key of the value
     def add_value_to_store(self, value):
         # We add the value to the store
         self.store[self.current_key] = value
         self.current_key += 1
-            #------------------------------------------------------------------------------------------------------
-            # We modify a value received in the store
+        return self.current_key - 1
+#------------------------------------------------------------------------------------------------------
+    # We modify a value received in the store, if the key exists
+    # key   = key of the value to modify
+    # value = new value
     def modify_value_in_store(self,key,value):
-                # we modify a value in the store if it exists
-        #print("MODIFY %d to %s" % key, value)
         if key in self.store:
             self.store[key] = value
-                    #------------------------------------------------------------------------------------------------------
-                    # We delete a value received from the store
+#------------------------------------------------------------------------------------------------------
+    # We delete a value received from the store, if it exists in the store
+    # key = key of value to delete
     def delete_value_in_store(self,key):
-        # we delete a value in the store if it exists
-        print("delete %d", key)
         self.store.pop(key, None)
-                        #------------------------------------------------------------------------------------------------------
-                        # Contact a specific vessel with a set of variables to transmit to it
+#------------------------------------------------------------------------------------------------------
+    # Contact a specific vessel with a set of variables to transmit to it, via 
+    # an HTTP POST request
+    # vessel_ip = ip of the vessel to contact
+    # path      = path to send the HTTP request to
+    # data      = dictionary of values to include in the post request 
     def contact_vessel(self, vessel_ip, path, data):
         # the Boolean variable we will return
         success = False
-        # The variables must be encoded in the URL format, through urllib.urlencode
-        #post_content = urlencode({'action': action, 'key': key, 'value': value})
 
+        #Add a propagation flag to the data, to indicate that the vessel 
+        #should not propagate the received valeus further
         data['propagate'] = '1'
         post_content = urlencode(data)
         # the HTTP header must contain the type of data we are transmitting, here URL encoded
@@ -101,14 +106,17 @@ class BlackboardServer(HTTPServer):
                 success = True
             # We catch every possible exceptions
         except Exception as e:
-            print "Error while contacting %s" % vessel
+            print "Error while contacting %s" % vessel_ip
             # printing the error given by Python
             print(e)
 
         # we return if we succeeded or not
         return success
 #------------------------------------------------------------------------------------------------------
-    # We send a received value to all the other vessels of the system
+    # We send a received value to all the other vessels of the system, via HTTP 
+    # POST requests
+    # path = path to send the POST request to
+    # data = dictionary of vaues to include in the POST requests
     def propagate_value_to_vessels(self, path, data):
         # We iterate through the vessel list
         for vessel in self.vessels:
@@ -161,12 +169,12 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
     	print("Receiving a GET on path %s" % self.path)
     	# Here, we should check which path was requested and call the right logic based on it
-        if(self.path == "/board" or self.path == "/"):
+        if(self.path == "/board" or self.path == "/"): #Fetch the entire HTML page
     	   self.do_GET_Index()
-        elif(self.path == "/entries"):
+        elif(self.path == "/entries"): #Fetch only the entries of the board
            self.do_GET_entries()
-        else:
-           self.set_HTTP_headers(400)
+        else: #Send 404 status to client if unknown path is requested
+           self.set_HTTP_headers(404)
 #------------------------------------------------------------------------------------------------------
 # GET logic - specific path
 #------------------------------------------------------------------------------------------------------
@@ -174,10 +182,13 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         self.set_HTTP_headers(200)
 
         entryElems = ""
-
+        
+        #Loop through the list of all entries, create HTML element from 
+        #template for each. Add each of these to the entryElems string
         for (tag, entry) in self.server.store:
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
+        #Return the generated HTML
         self.wfile.write(entryElems)
 
     def do_GET_Index(self):
@@ -186,22 +197,22 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         entryElems = ""
 
+        #Loop through the list of all entries, create HTML element from 
+        #template for each. Add each of these to the entryElems string
         for (tag, entry) in self.server.store.iteritems():
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
-
+        #Generate the body of the HTML from the template
         body = boardcontents_template % (BOARD_MESSAGE, entryElems)
 
+        #Generate the footer from the template
         footer = board_frontpage_footer_template % AUTHORS
 
+        #Combine all HTML parts into a full page
         html_response = board_frontpage_header_template + body + footer
 
+        #Return the generated HTML page
         self.wfile.write(html_response)
-
-#------------------------------------------------------------------------------------------------------
-	# we might want some other functions
-#------------------------------------------------------------------------------------------------------
-
 
 
 #------------------------------------------------------------------------------------------------------
@@ -213,41 +224,50 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # We should also parse the data received
         # and set the headers for the client
 
-        #if(self.path == "/board"):
-        #    add_entry()
-
+        #Parse the data into a dictionary
         data = self.parse_POST_request()
         retransmit = False
+        path       = "" #Variable to store path to propagate data to on other vessels
+        propData   = {} #Dictionary to store propagation data. Values set 
+                        #depending on what type of request to propagate
 
         if(self.path == '/entries'):
+        #Received a request to add a new post
+            print("Recognized as new entry post")
             try:
                 self.server.add_value_to_store(data['entry'][0])
                 propData = {'entry' : data['entry'][0]}
-                path     = '/entry' 
+                path     = '/entries' 
                 retransmit = True
                 self.set_HTTP_headers(200)
-            except Exception:
+            except Exception: #If some data is malformed or missing, return error code
                 self.set_HTTP_headers(400)
-        elif(re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
+        elif(self.server.current_key != 0 and 
+             re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
+            #Received a request to either modify or delete a post 
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
                     self.server.delete_value_in_store(int(self.path.split("/")[2]))
                     propData = {'delete' : '1', 'entry' : ''}
                 else:
-                    print("Modify post received") #TODO: Comments
+                    print("Recognized as modify post") 
                     self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
                     propData = {'delete': '0', 'entry': data['entry'][0]}
                     
                 path = self.path    
                 retransmit = True
                 self.set_HTTP_headers(200)
-            except Exception:
+            except Exception: #If some data is malformed or missing, return error code
                 self.set_HTTP_headers(400)
+        else: #If request sent to unrecognized path, respond with error code 404
+            self.set_HTTP_headers(404)
 
-        # If we want to retransmit what we received to the other vessels
-        # Like this, we will just create infinite loops!
-        if retransmit:
+        # If the retransmit flag is set, call the propagation function, but only
+        # if the propagate flag is not set in the received data. This latter flag
+        # indicates that the POST request was sent from another vessel and should
+        # not be propagated by this vessel
+        if retransmit and not('propagate' in data):
             # do_POST send the message only when the function finishes
             # We must then create threads if we want to do some heavy computation
             #
@@ -257,15 +277,6 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             thread.daemon = True
             # We start the thread
             thread.start()
-#------------------------------------------------------------------------------------------------------
-# POST Logic
-#------------------------------------------------------------------------------------------------------
-	# We might want some functions here as well
-#------------------------------------------------------------------------------------------------------
-
-
-
-
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
