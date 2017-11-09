@@ -133,7 +133,7 @@ class BlackboardServer(HTTPServer):
 
     def initiate_election(self):
         candidates = [(self.rank, self.vessel_id)]
-        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], "/election", candidates)
+        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], "/election", {'candidates' : candidates})
 #------------------------------------------------------------------------------------------------------
 
 
@@ -318,13 +318,15 @@ if __name__ == '__main__':
         boardcontents_template = open('server/boardcontents_template.html', 'rb').read()
         entry_template = open('server/entry_template.html', 'rb').read()
 
+        sys.stdout = open("%dOutput.txt" % vessel_id, 'w+')
+
         # We launch a server
         server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list, rank)
         print("Starting the server on port %d" % PORT_NUMBER)
 
         try:
             server.serve_forever()
-            server.initate_election()
+            server.initiate_election()
         except KeyboardInterrupt:
             server.server_close()
             print("Stopping Server")
