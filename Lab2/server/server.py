@@ -271,7 +271,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 self.set_HTTP_headers(400)
         elif(self.path == "/election"):
             try:
-                print data['candidates']
+                print("CANDIDATES:")
+                print(data['candidates'])
             except Exception: 
                 #TODO
                 pass
