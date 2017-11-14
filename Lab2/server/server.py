@@ -142,13 +142,13 @@ class BlackboardServer(HTTPServer):
                             data)
 
     def continue_election(self, instigator, leader, rank):
-        send_message_to_neighbor("/election", 
+        self.send_message_to_neighbor("/election", 
                             {'instigator' : instigator,
                              'leader' : leader,
                              'rank'   : rank})
         
     def initiate_election(self):
-        continue_election(self.vessel_id, self.vessel_id, self.rank)        
+        self.continue_election(self.vessel_id, self.vessel_id, self.rank)        
 
     def assume_leadership(self):
         pass
