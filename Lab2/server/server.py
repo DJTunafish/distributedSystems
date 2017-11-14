@@ -333,8 +333,57 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             self.set_HTTP_headers(503)
 
     def do_POST_leader(self):
-        #TODO TODO TODO: Propagate messages & stuff w/o threading
-        pass
+        print("Receiving a POST on %s" % self.path)
+        # Here, we should check which path was requested and call the right logic based on it
+        # We should also parse the data received
+        # and set the headers for the client
+
+        #Parse the data into a dictionary
+        data = self.parse_POST_request()
+        retransmit = False
+        path       = "" #Variable to store path to propagate data to on other vessels
+        propData   = {} #Dictionary to store propagation data. Values set
+                        #depending on what type of request to propagate
+
+        if(self.path == '/entries'):
+        #Received a request to add a new post
+            print("Recognized as new entry post")
+            try:
+                self.server.add_value_to_store(data['entry'][0])
+                propData = {'entry' : data['entry'][0]}
+                path     = '/entries'
+                retransmit = True
+                self.set_HTTP_headers(200)
+            except Exception: #If some data is malformed or missing, return error code
+                self.set_HTTP_headers(400)
+        elif(self.server.current_key != 0 and
+             re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
+            #Received a request to either modify or delete a post
+            try:
+                if(data['delete'][0] == '1'):
+                    print("Recognized as delete post")
+                    self.server.delete_value_in_store(int(self.path.split("/")[2]))
+                    propData = {'delete' : '1', 'entry' : ''}
+                else:
+                    print("Recognized as modify post")
+                    self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
+                    propData = {'delete': '0', 'entry': data['entry'][0]}
+
+                path = self.path
+                retransmit = True
+                self.set_HTTP_headers(200)
+            except Exception: #If some data is malformed or missing, return error code
+                self.set_HTTP_headers(400)
+        else: #If request sent to unrecognized path, respond with error code 404
+            self.set_HTTP_headers(404)
+
+        # If the retransmit flag is set, call the propagation function, but only
+        # if the propagate flag is not set in the received data. This latter flag
+        # indicates that the POST request was sent from another vessel and should
+        # not be propagated by this vessel
+        if retransmit:
+            data['sentFromLeader'] = True
+            self.server.propagate_value_to_vessels(path, data)
 
     def do_POST_slave(self):
         print("Receiving a POST on %s" % self.path)
@@ -368,13 +417,13 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
-                    if('sentFromServer' in data):
+                    if('sentFromLeader' in data):
                         #TODO
                         self.server.delete_value_in_store(int(self.path.split("/")[2]))
                     propData = {'delete' : '1', 'entry' : ''}
                 else:
                     print("Recognized as modify post")
-                    if('sentFromServer' in data):
+                    if('sentFromLeader' in data):
                         #TODO
                         self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
                     propData = {'delete': '0', 'entry': data['entry'][0]}
@@ -391,7 +440,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # if the propagate flag is not set in the received data. This latter flag
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
-        if retransmit and not('sentFromServer' in data):
+        if retransmit and not('sentFromLeader' in data):
             contact_leader(path, data)
 
 #------------------------------------------------------------------------------------------------------
