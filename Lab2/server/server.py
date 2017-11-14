@@ -79,16 +79,16 @@ class BlackboardServer(HTTPServer):
     def delete_value_in_store(self,key):
         self.store.pop(key, None)
 #------------------------------------------------------------------------------------------------------
-    # Contact a specific vessel with a set of variables to transmit to it, via 
+    # Contact a specific vessel with a set of variables to transmit to it, via
     # an HTTP POST request
     # vessel_ip = ip of the vessel to contact
     # path      = path to send the HTTP request to
-    # data      = dictionary of values to include in the post request 
+    # data      = dictionary of values to include in the post request
     def contact_vessel(self, vessel_ip, path, data):
         # the Boolean variable we will return
         success = False
 
-        #Add a propagation flag to the data, to indicate that the vessel 
+        #Add a propagation flag to the data, to indicate that the vessel
         #should not propagate the received valeus further
         data['propagate'] = '1'
         post_content = urlencode(data)
@@ -112,14 +112,15 @@ class BlackboardServer(HTTPServer):
                 success = True
             # We catch every possible exceptions
         except Exception as e:
-            print "Error while contacting %s" % vessel_ip
+            print "Error in contact_vessel while contacting %s" % vessel_ip
             # printing the error given by Python
             print(e)
+            print repr(e)
 
         # we return if we succeeded or not
         return success
 #------------------------------------------------------------------------------------------------------
-    # We send a received value to all the other vessels of the system, via HTTP 
+    # We send a received value to all the other vessels of the system, via HTTP
     # POST requests
     # path = path to send the POST request to
     # data = dictionary of vaues to include in the POST requests
@@ -136,20 +137,33 @@ class BlackboardServer(HTTPServer):
         self.contact_vessel("10.1.0.%s" % self.leader, path, data)
 
     def send_message_to_neighbor(self, path, data):
-        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], 
-                            path,
-                            data)
+        if('coordination' in data):
+            print('Sending coordination message to ' + self.vessels[vessel_id % len(self.vessels)])
+        else:
+            print('Sending data message to ' + self.vessels[vessel_id % len(self.vessels)])
+        thread = Thread(target=self.contact_vessel,
+                        args=(self.vessels[vessel_id % len(self.vessels)], path, data))
+        thread.daemon = True
+        thread.start()
 
     def continue_election(self, instigator, leader, rank):
-        self.send_message_to_neighbor("/election", 
+        print('Continue with election-process')
+        thread = Thread(target=self.send_message_to_neighbor,
+                        args=("/election",
                             {'instigator' : instigator,
                              'leader' : leader,
-                             'rank'   : rank})
-        
+                             'rank'   : rank}))
+        thread.daemon = True
+        thread.start()
+        #self.send_message_to_neighbor("/election",
+        #                    {'instigator' : instigator,
+        #                     'leader' : leader,
+        #                     'rank'   : rank})
+
     def initiate_election(self):
         print("Starting election")
         sleep(2)
-        self.continue_election(self.vessel_id, self.vessel_id, self.rank)        
+        self.continue_election(self.vessel_id, self.vessel_id, self.rank)
 
     def assume_leadership(self):
         pass
@@ -212,8 +226,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         self.set_HTTP_headers(200)
 
         entryElems = ""
-        
-        #Loop through the list of all entries, create HTML element from 
+
+        #Loop through the list of all entries, create HTML element from
         #template for each. Add each of these to the entryElems string
         for (tag, entry) in self.server.store:
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
@@ -227,7 +241,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         entryElems = ""
 
-        #Loop through the list of all entries, create HTML element from 
+        #Loop through the list of all entries, create HTML element from
         #template for each. Add each of these to the entryElems string
         for (tag, entry) in self.server.store.iteritems():
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
@@ -250,55 +264,70 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 #------------------------------------------------------------------------------------------------------
 
     def do_POST(self):
-        if(self.server.leader_vessel == "" and (not self.server.leader)):    
+        if(self.server.leader_vessel == "" and (not self.server.leader)):
+            print('Handle POST-request to elect leader')
             self.do_POST_no_leader()
         elif(self.server.leader):
+            print('Handle POST-request as leader')
             self.do_POST_leader()
         else:
-            self.do_POST_slave() 
+            print('Handle POST-request as slave')
+            self.do_POST_slave()
 
     def do_POST_no_leader(self):
         print("Receiving a POST on %s" % self.path)
+
+        data = self.parse_POST_request()
+        retransmit = False
 
         if(self.path == "/election"):
             try:
                 if('coordination' in data):
                     print("Coordination message received. Leader: " + data['leader'][0])
-                    if(data['leader'][0] == self.server.vessel_id):
-                        print(self.server.vessel_id + " runs Barter Town")
+                    if(int(data['leader'][0]) == self.server.vessel_id):
+                        print(str(self.server.vessel_id) + " runs Barter Town")
                         self.server.leader = True
                     else:
-                        print(self.server.vessel_id + "acknowledges that " + 
+                        print(str(self.server.vessel_id) + " acknowledges that " +
                                 data['leader'][0] + " runs Barter Town")
-                        self.server.leader = data['leader'][0]
-                        self.server.send_message_to_neighbor("/election", {'leader' : data['leader'][0], 
+                        self.server.leader_vessel = data['leader'][0]
+                        self.server.send_message_to_neighbor("/election", {'leader' : data['leader'][0],
                                                                            'coordination' : True})
+                    self.set_HTTP_headers(200)
                 else:
                     print("Election message received. Current leader: " + data['leader'][0])
-                    if(data['instigator'][0] == int(self.server.vessel_id)):
-                        if(data['leader'][0] == int(self.server.vessel_id)):
-                            self.server.contact_neighbor("/election", 
+                    if(int(data['instigator'][0]) == self.server.vessel_id):
+                        if(int(data['leader'][0]) == self.server.vessel_id):
+                            print('We are instigator')
+                            self.server.send_message_to_neighbor("/election",
                                                          {'coordination' : True,
                                                           'leader' : self.server.vessel_id})
                         else:
-                            self.server.leader = data['leader'][0]
+                            print('We are not instigator any more')
+                            #self.server.leader = data['leader'][0]
                     elif(int(data['rank'][0]) < self.server.rank):
-                        self.server.continue_election(data['instigator'][0], 
+                        print('Election: we have lower rank')
+                        self.server.continue_election(data['instigator'][0],
                                                       self.server.vessel_id,
                                                       self.server.rank)
                     elif(int(data['rank'][0]) > self.server.rank):
-                        self.server.continue_election(data['instigator'][0], 
+                        print('Election: we have higher rank -> self.leader')
+                        self.server.continue_election(data['instigator'][0],
                                                       data['leader'][0],
                                                       data['rank'][0])
-                    elif(int(data['leader'][0]) > self.server.vessel_id):   
-                        self.server.continue_election(data['instigator'][0], 
+                    elif(int(data['leader'][0]) > self.server.vessel_id):
+                        print('Election: same rank, tiebreaker won')
+                        self.server.continue_election(data['instigator'][0],
                                                       self.server.vessel_id,
                                                       self.server.rank)
                     else:
-                        self.server.continue_election(data['instigator'][0], 
+                        print('Election: same, rank, tiebreaker lost')
+                        self.server.continue_election(data['instigator'][0],
                                                       data['leader'][0],
                                                       data['rank'][0])
-            except Exception: 
+                    self.set_HTTP_headers(200)
+            except Exception as e:
+                print(e)
                 self.set_HTTP_headers(400)
         else:
             self.set_HTTP_headers(503)
@@ -317,7 +346,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         data = self.parse_POST_request()
         retransmit = False
         path       = "" #Variable to store path to propagate data to on other vessels
-        propData   = {} #Dictionary to store propagation data. Values set 
+        propData   = {} #Dictionary to store propagation data. Values set
                         #depending on what type of request to propagate
 
         if(self.path == '/entries'):
@@ -328,14 +357,14 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                     #TODO
                     self.server.add_value_to_store(data['entry'][0])
                 propData = {'entry' : data['entry'][0]}
-                path     = '/entries' 
+                path     = '/entries'
                 retransmit = True
                 self.set_HTTP_headers(200)
             except Exception: #If some data is malformed or missing, return error code
                 self.set_HTTP_headers(400)
-        elif(self.server.current_key != 0 and 
+        elif(self.server.current_key != 0 and
              re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
-            #Received a request to either modify or delete a post 
+            #Received a request to either modify or delete a post
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
@@ -345,12 +374,12 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                     propData = {'delete' : '1', 'entry' : ''}
                 else:
                     print("Recognized as modify post")
-                    if('sentFromServer' in data): 
+                    if('sentFromServer' in data):
                         #TODO
                         self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
                     propData = {'delete': '0', 'entry': data['entry'][0]}
-                    
-                path = self.path    
+
+                path = self.path
                 retransmit = True
                 self.set_HTTP_headers(200)
             except Exception: #If some data is malformed or missing, return error code
@@ -363,7 +392,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
         if retransmit and not('sentFromServer' in data):
-            contact_leader(path, data) 
+            contact_leader(path, data)
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
@@ -388,7 +417,6 @@ if __name__ == '__main__':
             vessel_list.append("10.1.0.%d" % i) # We can add ourselves, we have a test in the propagation
 
 
-        vessel_list = [vessel_list[0], "127.0.0.1"]
         board_frontpage_footer_template = open('server/board_frontpage_footer_template.html', 'rb').read()
         board_frontpage_header_template = open('server/board_frontpage_header_template.html', 'rb').read()
         boardcontents_template = open('server/boardcontents_template.html', 'rb').read()
@@ -397,13 +425,13 @@ if __name__ == '__main__':
         # We launch a server
         server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list, rank)
         print("Starting the server on port %d" % PORT_NUMBER)
-        
+
         thread = Thread(target=server.initiate_election,args=() )
         # We kill the process if we kill the server
         thread.daemon = True
         # We start the thread
         thread.start()
-        
+
         try:
             server.serve_forever()
         except KeyboardInterrupt:
