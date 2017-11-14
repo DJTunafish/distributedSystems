@@ -10,12 +10,12 @@
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler # Socket specifically designed to handle HTTP requests
 import sys # Retrieve arguments
 import re # Use to pattern match routes
-import random #Use to generate random node id
 from urlparse import parse_qs # Parse POST data
 from httplib import HTTPConnection # Create a HTTP connection, as a client (for POST requests to the other vessels)
 from urllib import urlencode # Encode POST content into the HTTP header
 from codecs import open # Open a file
 from threading import  Thread # Thread Management
+from random import randint
 #------------------------------------------------------------------------------------------------------
 
 # Global variables for HTML templates
@@ -23,7 +23,7 @@ board_frontpage_footer_template = ""
 board_frontpage_header_template = ""
 boardcontents_template = ""
 entry_template = ""
-nodeId = -1
+#nodeId = -1
 
 AUTHORS = "Erik Jungmark & Patrick Franz"
 
@@ -55,6 +55,7 @@ class BlackboardServer(HTTPServer):
         self.rank   = rank
         self.leader = False
         self.leader_vessel = ""
+        self.initiate_election()
 #------------------------------------------------------------------------------------------------------
     # We add a value received to the store
     #value: value to be added to the store
@@ -122,18 +123,33 @@ class BlackboardServer(HTTPServer):
     # POST requests
     # path = path to send the POST request to
     # data = dictionary of vaues to include in the POST requests
-   # def propagate_value_to_vessels(self, path, data):
-    #    # We iterate through the vessel list
-     #   for vessel in self.vessels:
-      #      # We should not send it to our own IP, or we would create an infinite loop of updates
-       #     if vessel != ("10.1.0.%s" % self.vessel_id):
-        #        # A good practice would be to try again if the request failed
-         #       # Here, we do it only once
-          #      self.contact_vessel(vessel, path, data)
+    def propagate_value_to_vessels(self, path, data):
+        # We iterate through the vessel list
+        for vessel in self.vessels:
+            # We should not send it to our own IP, or we would create an infinite loop of updates
+            if vessel != ("10.1.0.%s" % self.vessel_id):
+                # A good practice would be to try again if the request failed
+                # Here, we do it only once
+                self.contact_vessel(vessel, path, data)
+
+    def contact_leader(self, path, data):
+        #TODO
+
+    def continue_election(self, instigator, leader, rank):
+        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], 
+                            "/election",
+                            {'instigator' : instigator,
+                             'leader' : leader,
+                             'rank'   : rank})
 
     def initiate_election(self):
-        candidates = [(self.rank, self.vessel_id)]
-        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], "/election", {'candidates' : candidates})
+        continue_election(self.vessel_id, self.vessel_id, self.rank)        
+
+    def assume_leadership(self):
+        self.queueSemaphore = Semaphore(value=0)
+        self.msgQueue       = []
+        self.leader         = True
+        #TODO: send coordination message. Or maybe send that down in the do_POST and only call this when coordination's done
 #------------------------------------------------------------------------------------------------------
 
 
@@ -227,7 +243,52 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 #------------------------------------------------------------------------------------------------------
 # Request handling - POST
 #------------------------------------------------------------------------------------------------------
+
     def do_POST(self):
+        if(self.server.leader_vessel == "" and (not self.server.leader)):    
+            self.do_POST_no_leader()
+        elif(self.server.leader):
+            self.do_POST_leader()
+        else:
+            self.do_POST_slave() 
+
+    def do_POST_no_leader(self):
+        print("Receiving a POST on %s" % self.path)
+
+        if(self.path == "/election"):
+            try:
+                if(data['instigator'][0] == int(self.server.vessel_id)):
+                    if(data['leader'][0] == int(self.server.vessel_id)):
+                        self.server.assume_leadership()
+                    else:
+                        self.server.leader = data['leader'][0]
+                    #Potential TODO: Deal with re-election here
+                elif(int(data['rank'][0]) < self.server.rank):
+                    self.server.continue_election(data['instigator'][0], 
+                                                  self.server.vessel_id,
+                                                  self.server.rank)
+                elif(int(data['rank'][0]) > self.server.rank):
+                    self.server.continue_election(data['instigator'][0], 
+                                                  data['leader'][0],
+                                                  data['rank'][0])
+                elif(int(data['leader'][0]) > self.server.vessel_id):   
+                    self.server.continue_election(data['instigator'][0], 
+                                                  self.server.vessel_id,
+                                                  self.server.rank)
+                else:
+                    self.server.continue_election(data['instigator'][0], 
+                                                  data['leader'][0],
+                                                  data['rank'][0])
+            #TODO: Handle coordination message
+            except Exception: 
+                self.set_HTTP_headers(400)
+        else:
+            self.set_HTTP_headers(503)
+
+    def do_POST_leader(self):
+        #TODO TODO TODO: Propagate messages & stuff w/o threading
+
+    def do_POST_slave(self):
         print("Receiving a POST on %s" % self.path)
         # Here, we should check which path was requested and call the right logic based on it
         # We should also parse the data received
@@ -244,7 +305,9 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
-                self.server.add_value_to_store(data['entry'][0])
+                if('sentFromServer' in data):
+                    #TODO
+                    self.server.add_value_to_store(data['entry'][0])
                 propData = {'entry' : data['entry'][0]}
                 path     = '/entries' 
                 retransmit = True
@@ -257,11 +320,15 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
-                    self.server.delete_value_in_store(int(self.path.split("/")[2]))
+                    if('sentFromServer' in data):
+                        #TODO
+                        self.server.delete_value_in_store(int(self.path.split("/")[2]))
                     propData = {'delete' : '1', 'entry' : ''}
                 else:
-                    print("Recognized as modify post") 
-                    self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
+                    print("Recognized as modify post")
+                    if('sentFromServer' in data): 
+                        #TODO
+                        self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
                     propData = {'delete': '0', 'entry': data['entry'][0]}
                     
                 path = self.path    
@@ -269,13 +336,6 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 self.set_HTTP_headers(200)
             except Exception: #If some data is malformed or missing, return error code
                 self.set_HTTP_headers(400)
-        elif(self.path == "/election"):
-            try:
-                print("CANDIDATES:")
-                print(data['candidates'])
-            except Exception: 
-                #TODO
-                pass
         else: #If request sent to unrecognized path, respond with error code 404
             self.set_HTTP_headers(404)
 
@@ -283,16 +343,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # if the propagate flag is not set in the received data. This latter flag
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
-        if retransmit and not('propagate' in data):
-            # do_POST send the message only when the function finishes
-            # We must then create threads if we want to do some heavy computation
-            #
-            # Random content
-            thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, propData) )
-            # We kill the process if we kill the server
-            thread.daemon = True
-            # We start the thread
-            thread.start()
+        if retransmit and not('sentFromServer' in data):
+            contact_leader(path, data) 
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
@@ -309,18 +361,18 @@ if __name__ == '__main__':
     else:
         # We need to know the vessel IP
         vessel_id = int(sys.argv[1])
-        rank   = random.randint(0, 1000)
+        rank   = randint(0, 1000)
         # We need to write the other vessels IP, based on the knowledge of their number
 
         for i in range(1, int(sys.argv[2])+1):
             vessel_list.append("10.1.0.%d" % i) # We can add ourselves, we have a test in the propagation
 
+
+        vessel_list = [vessel_list[0], "127.0.0.1"]
         board_frontpage_footer_template = open('server/board_frontpage_footer_template.html', 'rb').read()
         board_frontpage_header_template = open('server/board_frontpage_header_template.html', 'rb').read()
         boardcontents_template = open('server/boardcontents_template.html', 'rb').read()
         entry_template = open('server/entry_template.html', 'rb').read()
-
-        sys.stdout = open("%dOutput.txt" % vessel_id, 'w+')
 
         # We launch a server
         server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list, rank)
@@ -328,7 +380,6 @@ if __name__ == '__main__':
 
         try:
             server.serve_forever()
-            server.initiate_election()
         except KeyboardInterrupt:
             server.server_close()
             print("Stopping Server")
