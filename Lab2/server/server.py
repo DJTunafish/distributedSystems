@@ -151,6 +151,7 @@ class BlackboardServer(HTTPServer):
         continue_election(self.vessel_id, self.vessel_id, self.rank)        
 
     def assume_leadership(self):
+        pass
         #self.leader         = True
         #TODO: send coordination message. Or maybe send that down in the do_POST and only call this when coordination's done
 #------------------------------------------------------------------------------------------------------
@@ -303,6 +304,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST_leader(self):
         #TODO TODO TODO: Propagate messages & stuff w/o threading
+        pass
 
     def do_POST_slave(self):
         print("Receiving a POST on %s" % self.path)
