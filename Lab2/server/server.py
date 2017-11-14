@@ -16,6 +16,7 @@ from urllib import urlencode # Encode POST content into the HTTP header
 from codecs import open # Open a file
 from threading import  Thread # Thread Management
 from random import randint
+from time import sleep
 #------------------------------------------------------------------------------------------------------
 
 # Global variables for HTML templates
@@ -55,7 +56,6 @@ class BlackboardServer(HTTPServer):
         self.rank   = rank
         self.leader = False
         self.leader_vessel = ""
-        self.initiate_election()
 #------------------------------------------------------------------------------------------------------
     # We add a value received to the store
     #value: value to be added to the store
@@ -133,8 +133,7 @@ class BlackboardServer(HTTPServer):
                 self.contact_vessel(vessel, path, data)
 
     def contact_leader(self, path, data):
-        #TODO
-        pass
+        self.contact_vessel("10.1.0.%s" % self.leader, path, data)
 
     def send_message_to_neighbor(self, path, data):
         self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], 
@@ -148,6 +147,8 @@ class BlackboardServer(HTTPServer):
                              'rank'   : rank})
         
     def initiate_election(self):
+        print("Starting election")
+        sleep(2)
         self.continue_election(self.vessel_id, self.vessel_id, self.rank)        
 
     def assume_leadership(self):
@@ -396,7 +397,13 @@ if __name__ == '__main__':
         # We launch a server
         server = BlackboardServer(('', PORT_NUMBER), BlackboardRequestHandler, vessel_id, vessel_list, rank)
         print("Starting the server on port %d" % PORT_NUMBER)
-
+        
+        thread = Thread(target=server.initiate_election,args=() )
+        # We kill the process if we kill the server
+        thread.daemon = True
+        # We start the thread
+        thread.start()
+        
         try:
             server.serve_forever()
         except KeyboardInterrupt:
