@@ -134,21 +134,24 @@ class BlackboardServer(HTTPServer):
 
     def contact_leader(self, path, data):
         #TODO
+        pass
+
+    def send_message_to_neighbor(self, path, data):
+        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], 
+                            path,
+                            data)
 
     def continue_election(self, instigator, leader, rank):
-        self.contact_vessel(self.vessels[vessel_id % len(self.vessels)], 
-                            "/election",
+        send_message_to_neighbor("/election", 
                             {'instigator' : instigator,
                              'leader' : leader,
                              'rank'   : rank})
-
+        
     def initiate_election(self):
         continue_election(self.vessel_id, self.vessel_id, self.rank)        
 
     def assume_leadership(self):
-        self.queueSemaphore = Semaphore(value=0)
-        self.msgQueue       = []
-        self.leader         = True
+        #self.leader         = True
         #TODO: send coordination message. Or maybe send that down in the do_POST and only call this when coordination's done
 #------------------------------------------------------------------------------------------------------
 
@@ -257,29 +260,42 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         if(self.path == "/election"):
             try:
-                if(data['instigator'][0] == int(self.server.vessel_id)):
-                    if(data['leader'][0] == int(self.server.vessel_id)):
-                        self.server.assume_leadership()
+                if('coordination' in data):
+                    print("Coordination message received. Leader: " + data['leader'][0])
+                    if(data['leader'][0] == self.server.vessel_id):
+                        print(self.server.vessel_id + " runs Barter Town")
+                        self.server.leader = True
                     else:
+                        print(self.server.vessel_id + "acknowledges that " + 
+                                data['leader'][0] + " runs Barter Town")
                         self.server.leader = data['leader'][0]
-                    #Potential TODO: Deal with re-election here
-                elif(int(data['rank'][0]) < self.server.rank):
-                    self.server.continue_election(data['instigator'][0], 
-                                                  self.server.vessel_id,
-                                                  self.server.rank)
-                elif(int(data['rank'][0]) > self.server.rank):
-                    self.server.continue_election(data['instigator'][0], 
-                                                  data['leader'][0],
-                                                  data['rank'][0])
-                elif(int(data['leader'][0]) > self.server.vessel_id):   
-                    self.server.continue_election(data['instigator'][0], 
-                                                  self.server.vessel_id,
-                                                  self.server.rank)
+                        self.server.send_message_to_neighbor("/election", {'leader' : data['leader'][0], 
+                                                                           'coordination' : True})
                 else:
-                    self.server.continue_election(data['instigator'][0], 
-                                                  data['leader'][0],
-                                                  data['rank'][0])
-            #TODO: Handle coordination message
+                    print("Election message received. Current leader: " + data['leader'][0])
+                    if(data['instigator'][0] == int(self.server.vessel_id)):
+                        if(data['leader'][0] == int(self.server.vessel_id)):
+                            self.server.contact_neighbor("/election", 
+                                                         {'coordination' : True,
+                                                          'leader' : self.server.vessel_id})
+                        else:
+                            self.server.leader = data['leader'][0]
+                    elif(int(data['rank'][0]) < self.server.rank):
+                        self.server.continue_election(data['instigator'][0], 
+                                                      self.server.vessel_id,
+                                                      self.server.rank)
+                    elif(int(data['rank'][0]) > self.server.rank):
+                        self.server.continue_election(data['instigator'][0], 
+                                                      data['leader'][0],
+                                                      data['rank'][0])
+                    elif(int(data['leader'][0]) > self.server.vessel_id):   
+                        self.server.continue_election(data['instigator'][0], 
+                                                      self.server.vessel_id,
+                                                      self.server.rank)
+                    else:
+                        self.server.continue_election(data['instigator'][0], 
+                                                      data['leader'][0],
+                                                      data['rank'][0])
             except Exception: 
                 self.set_HTTP_headers(400)
         else:
@@ -362,6 +378,7 @@ if __name__ == '__main__':
         # We need to know the vessel IP
         vessel_id = int(sys.argv[1])
         rank   = randint(0, 1000)
+        print("RANK: " + str(rank))
         # We need to write the other vessels IP, based on the knowledge of their number
 
         for i in range(1, int(sys.argv[2])+1):
