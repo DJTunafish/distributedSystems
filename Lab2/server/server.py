@@ -226,6 +226,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
     	   self.do_GET_Index()
         elif(self.path == "/entries"): #Fetch only the entries of the board
            self.do_GET_entries()
+        elif(self.path == "/entries/raw"): #Fetch only the entries of the board
+           self.do_GET_entries_raw()
         else: #Send 404 status to client if unknown path is requested
            self.set_HTTP_headers(404)
 #------------------------------------------------------------------------------------------------------
@@ -241,6 +243,20 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         for (tag, entry) in self.server.store:
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
+        #Return the generated HTML
+        self.wfile.write(entryElems)
+
+    def do_GET_entries_raw(self):
+        self.set_HTTP_headers(200)
+
+        entryElems = []
+
+        #Loop through the list of all entries, create HTML element from
+        #template for each. Add each of these to the entryElems string
+        for (tag, entry) in self.server.store.iteritems():
+            entryElems.append(entry)
+
+    #    test = "<html><body>%s</body></html>"
         #Return the generated HTML
         self.wfile.write(entryElems)
 
