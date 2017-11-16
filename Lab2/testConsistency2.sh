@@ -9,15 +9,18 @@ done
 
 sleep 2
 
+j=1
 for i in `seq 1 9`; do
+    j=$((var+1))
 	IPPREFIX="10.1.0."
 	IPSUFFIX="/entries/raw"
 	FSTIP=${IPPREFIX}${i}${IPSUFFIX}
-    SNDIP=${IPPREFIX}${i+1}${IPSUFFIX}
+    SNDIP=${IPPREFIX}${j}${IPSUFFIX}
 	FSTRES=$(curl -s -X GET ${FSTIP})
     SNDRES=$(curl -s -X GET ${SNDIP})
-    DIFF=$(diff  <(echo "$FSTRES" ) <(echo "$SNDRES"))
-    if ["$DIFF" != ""]; then
-         echo "Vessel $i and vessel ${i+1} are not consistent"
+    if [ "$FSTRES" == "$SNDRES" ]; then
+         echo "Vessel $i and vessel $j are consistent"
+    else
+        echo "Vessel $i and vessel $j are not consistent"
     fi
 done
