@@ -61,11 +61,14 @@ class BlackboardServer(HTTPServer):
     #value: value to be added to the store
     #Adds a value to the store
     #Returns key of the value
-    def add_value_to_store(self, value):
+    def add_value_to_store(self, value, key=None):
         # We add the value to the store
-        self.store[self.current_key] = value
-        self.current_key += 1
-        return self.current_key - 1
+        if key == None:
+            key = self.current_key
+            self.current_key += 1
+
+        self.store[key] = value
+        return key
 #------------------------------------------------------------------------------------------------------
     # We modify a value received in the store, if the key exists
     # key   = key of the value to modify
@@ -131,12 +134,16 @@ class BlackboardServer(HTTPServer):
             if vessel != ("10.1.0.%s" % self.vessel_id):
                 # A good practice would be to try again if the request failed
                 # Here, we do it only once
-                self.contact_vessel(vessel, path, data)
+                thread = Thread(target=self.contact_vessel,
+                                args=(vessel, path, data))
+                thread.daemon = True
+                thread.start()
+                #self.contact_vessel(vessel, path, data)
 
     def contact_leader(self, path, data):
-        ip = "10.1.0.%s" % self.leader_vessel
+        vessel = "10.1.0.%s" % self.leader_vessel
         print(data)
-        self.contact_vessel(ip, path, data)
+        self.contact_vessel(vessel, path, data)
 
     def send_message_to_neighbor(self, path, data):
         if('coordination' in data):
@@ -252,10 +259,10 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         body = boardcontents_template % (BOARD_MESSAGE, entryElems)
 
         #Generate the footer from the template
-        footer = board_frontpage_footer_template % AUTHORS
+        footer = board_frontpage_footer_template % (AUTHORS, str(self.server.rank))
 
         #Combine all HTML parts into a full page
-        html_response = board_frontpage_header_template + body + footer
+        html_response = board_frontpage_header_template  + body + footer
 
         #Return the generated HTML page
         self.wfile.write(html_response)
@@ -351,9 +358,10 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
-                self.server.add_value_to_store(data['entry'][0])
+                nkey = self.server.add_value_to_store(data['entry'][0])
                 print(data['entry'][0])
-                propData = {'entry' : data['entry'][0]}
+                propData = {'entry' : data['entry'][0],
+                            'key' : nkey}
                 path     = '/entries'
                 retransmit = True
                 self.set_HTTP_headers(200)
@@ -407,7 +415,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             try:
                 if('sentFromLeader' in data):
                     #TODO
-                    self.server.add_value_to_store(data['entry'][0])
+                    self.server.add_value_to_store(data['entry'][0], int(data['key'][0]))
                 propData = {'entry' : data['entry'][0]}
                 print('Entry: ' + data['entry'][0])
                 path     = '/entries'
@@ -445,7 +453,11 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
         if retransmit and not('sentFromLeader' in data):
-            self.server.contact_leader(path, propData)
+            thread = Thread(target=self.server.contact_leader,
+                            args=(path, propData))
+            thread.daemon = True
+            thread.start()
+            #self.server.contact_leader(path, propData)
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
