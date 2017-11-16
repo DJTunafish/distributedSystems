@@ -134,7 +134,9 @@ class BlackboardServer(HTTPServer):
                 self.contact_vessel(vessel, path, data)
 
     def contact_leader(self, path, data):
-        self.contact_vessel("10.1.0.%s" % self.leader, path, data)
+        ip = "10.1.0.%s" % self.leader_vessel
+        print(data)
+        self.contact_vessel(ip, path, data)
 
     def send_message_to_neighbor(self, path, data):
         if('coordination' in data):
@@ -350,6 +352,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             print("Recognized as new entry post")
             try:
                 self.server.add_value_to_store(data['entry'][0])
+                print(data['entry'][0])
                 propData = {'entry' : data['entry'][0]}
                 path     = '/entries'
                 retransmit = True
@@ -382,8 +385,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
         if retransmit:
-            data['sentFromLeader'] = True
-            self.server.propagate_value_to_vessels(path, data)
+            propData['sentFromLeader'] = True
+            self.server.propagate_value_to_vessels(path, propData)
 
     def do_POST_slave(self):
         print("Receiving a POST on %s" % self.path)
@@ -402,10 +405,11 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
-                if('sentFromServer' in data):
+                if('sentFromLeader' in data):
                     #TODO
                     self.server.add_value_to_store(data['entry'][0])
                 propData = {'entry' : data['entry'][0]}
+                print('Entry: ' + data['entry'][0])
                 path     = '/entries'
                 retransmit = True
                 self.set_HTTP_headers(200)
@@ -441,7 +445,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
         if retransmit and not('sentFromLeader' in data):
-            contact_leader(path, data)
+            self.server.contact_leader(path, propData)
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
