@@ -93,7 +93,6 @@ class BlackboardServer(HTTPServer):
 
         #Add a propagation flag to the data, to indicate that the vessel
         #should not propagate the received valeus further
-        data['propagate'] = '1'
         post_content = urlencode(data)
         # the HTTP header must contain the type of data we are transmitting, here URL encoded
         headers = {"Content-type": "application/x-www-form-urlencoded"}
@@ -226,7 +225,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
     	   self.do_GET_Index()
         elif(self.path == "/entries"): #Fetch only the entries of the board
            self.do_GET_entries()
-        elif(self.path == "/entries/raw"): #Fetch only the entries of the board
+        elif(self.path == "/entries/raw"): #Fetch only the entries of the board with no HTML
            self.do_GET_entries_raw()
         else: #Send 404 status to client if unknown path is requested
            self.set_HTTP_headers(404)
@@ -246,13 +245,12 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Return the generated HTML
         self.wfile.write(entryElems)
 
+    #Get only the data of the entries in the blackboard with no HTML markup
     def do_GET_entries_raw(self):
         self.set_HTTP_headers(200)
 
         entryElems = []
 
-        #Loop through the list of all entries, create HTML element from
-        #template for each. Add each of these to the entryElems string
         for (tag, entry) in self.server.store.iteritems():
             entryElems.append(entry)
 
@@ -289,6 +287,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 #------------------------------------------------------------------------------------------------------
 
     def do_POST(self):
+        #Use different functions to handle POST requests depending on if there
+        #is no leader elected yet and whether this vessel is the leader or not.
         if(self.server.leader_vessel == "" and (not self.server.leader)):
             print('Handle POST-request to elect leader')
             self.do_POST_no_leader()
@@ -299,6 +299,10 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             print('Handle POST-request as slave')
             self.do_POST_slave()
 
+    #Function used to handle POST requests before a leader has been elected.
+    #Only requests regarding the election are accepted, all others receive
+    #a status code 503, indicating that the blackboard is unavailable until
+    #the election has been completed.
     def do_POST_no_leader(self):
         print("Receiving a POST on %s" % self.path)
 
@@ -308,11 +312,20 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         if(self.path == "/election"):
             try:
                 if('coordination' in data):
+                    #The request is a coordination message, intended to confirm
+                    #the results of a concluded election
                     print("Coordination message received. Leader: " + data['leader'][0])
                     if(int(data['leader'][0]) == self.server.vessel_id):
+                        #The coordination message sent by this vessel has gone
+                        #around the ring and come back to it, indicating that it
+                        #is free to assume leadership.
                         print(str(self.server.vessel_id) + " runs Barter Town")
                         self.server.leader = True
                     else:
+                        #The vessel has received a coordination message from its
+                        #neighbor, originally sent by the elected leader.
+                        #Save the vessel_id of the leader and retransmit the
+                        #coordination message to the next neighbor in the ring.
                         print(str(self.server.vessel_id) + " acknowledges that " +
                                 data['leader'][0] + " runs Barter Town")
                         self.server.leader_vessel = data['leader'][0]
@@ -320,27 +333,47 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                                                                            'coordination' : True})
                     self.set_HTTP_headers(200)
                 else:
+                    #The request indicates an active election
                     print("Election message received. Current leader: " + data['leader'][0])
                     if(int(data['instigator'][0]) == self.server.vessel_id):
+                        #The election the request indicates was started by
+                        #this vessel
                         if(int(data['leader'][0]) == self.server.vessel_id):
+                            #This vessel has won the election.
+                            #Send a coordination message to the neighbor
+                            #to inform all other vessels of this.
                             print('We are instigator')
                             self.server.send_message_to_neighbor("/election",
                                                          {'coordination' : True,
                                                           'leader' : self.server.vessel_id})
                         else:
+                            #This vessel has lost the election
                             print('We are not instigator any more')
                             #self.server.leader = data['leader'][0]
                     elif(int(data['rank'][0]) < self.server.rank):
+                        #The election was started by another vessel and the
+                        #current leader of the election has lower rank than
+                        #this vessel. Change the values in the message to indicate
+                        #that this vessel is the current leader of the election
+                        #and send the message to the next neighbor.
                         print('Election: we have lower rank')
                         self.server.continue_election(data['instigator'][0],
                                                       self.server.vessel_id,
                                                       self.server.rank)
                     elif(int(data['rank'][0]) > self.server.rank):
+                        #The election was started by another vessel and the
+                        #current leader of the election has greater rank than
+                        #this vessel. Send the message to the next neighbor
+                        #withour change.
                         print('Election: we have higher rank -> self.leader')
                         self.server.continue_election(data['instigator'][0],
                                                       data['leader'][0],
                                                       data['rank'][0])
                     elif(int(data['leader'][0]) > self.server.vessel_id):
+                    #The election was started by another vessel and the
+                    #current leader of the election has equivalent rank
+                    #to this vessel. Use the vessel_id of the current leader
+                    #and this vessel as a tie breaker.
                         print('Election: same rank, tiebreaker won')
                         self.server.continue_election(data['instigator'][0],
                                                       self.server.vessel_id,
@@ -351,8 +384,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                                                       data['leader'][0],
                                                       data['rank'][0])
                     self.set_HTTP_headers(200)
-            except Exception as e:
-                print(e)
+            except Exception as e: #In case of any missing or malformed data,
+                print(e)           #return error code
                 self.set_HTTP_headers(400)
         else:
             self.set_HTTP_headers(503)
@@ -376,6 +409,10 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             try:
                 nkey = self.server.add_value_to_store(data['entry'][0])
                 print(data['entry'][0])
+                #The leader includes the assigned key of the new entry
+                #in the propagation data, to ensure that all vessels
+                #store the entry at the same key and ensure that values
+                #are stored in the same order
                 propData = {'entry' : data['entry'][0],
                             'key' : nkey}
                 path     = '/entries'
@@ -404,14 +441,16 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         else: #If request sent to unrecognized path, respond with error code 404
             self.set_HTTP_headers(404)
 
-        # If the retransmit flag is set, call the propagation function, but only
-        # if the propagate flag is not set in the received data. This latter flag
-        # indicates that the POST request was sent from another vessel and should
-        # not be propagated by this vessel
+        # If the retransmit flag is set, call the propagation function.
+        # Include the sentFromLeader flag to indicate to the other vessels that
+        # the request is not sent from a client and that there is no need to
+        # retransmit the request back to the leader.
         if retransmit:
             propData['sentFromLeader'] = True
             self.server.propagate_value_to_vessels(path, propData)
 
+    #Function used for handling POST requests when the vessel is not
+    #the leader
     def do_POST_slave(self):
         print("Receiving a POST on %s" % self.path)
         # Here, we should check which path was requested and call the right logic based on it
@@ -421,16 +460,17 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Parse the data into a dictionary
         data = self.parse_POST_request()
         retransmit = False
-        path       = "" #Variable to store path to propagate data to on other vessels
-        propData   = {} #Dictionary to store propagation data. Values set
-                        #depending on what type of request to propagate
+        path       = "" #Variable to store path of the received request
+        propData   = {} #Dictionary to store data to send to the leader.
+                        #Values set depending on what type of request is received
 
         if(self.path == '/entries'):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
                 if('sentFromLeader' in data):
-                    #TODO
+                    #Modify local store only if the request was sent
+                    #from the leader.
                     self.server.add_value_to_store(data['entry'][0], int(data['key'][0]))
                 propData = {'entry' : data['entry'][0]}
                 print('Entry: ' + data['entry'][0])
@@ -446,13 +486,15 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
                     if('sentFromLeader' in data):
-                        #TODO
+                        #Modify local store only if the request was sent from
+                        #the leader
                         self.server.delete_value_in_store(int(self.path.split("/")[2]))
                     propData = {'delete' : '1', 'entry' : ''}
                 else:
                     print("Recognized as modify post")
                     if('sentFromLeader' in data):
-                        #TODO
+                        #Modify local store only if the request was sent from
+                        #the leader
                         self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
                     propData = {'delete': '0', 'entry': data['entry'][0]}
 
@@ -464,10 +506,9 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         else: #If request sent to unrecognized path, respond with error code 404
             self.set_HTTP_headers(404)
 
-        # If the retransmit flag is set, call the propagation function, but only
-        # if the propagate flag is not set in the received data. This latter flag
-        # indicates that the POST request was sent from another vessel and should
-        # not be propagated by this vessel
+        #If the retransmit flag was set, send a copy of the received request
+        #to the leader. However, do this only if the request was not sent
+        #from the leader
         if retransmit and not('sentFromLeader' in data):
             thread = Thread(target=self.server.contact_leader,
                             args=(path, propData))
@@ -490,6 +531,7 @@ if __name__ == '__main__':
     else:
         # We need to know the vessel IP
         vessel_id = int(sys.argv[1])
+        #Generate a random rank for the vessel, used for leader election
         rank   = randint(0, 1000)
         print("RANK: " + str(rank))
         # We need to write the other vessels IP, based on the knowledge of their number
