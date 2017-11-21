@@ -66,6 +66,8 @@ class BlackboardServer(HTTPServer):
         if key == None:
             key = self.current_key
             self.current_key += 1
+        elif key >= self.current_key:
+            self.current_key = key + 1
 
         self.store[key] = value
         return key
@@ -172,17 +174,7 @@ class BlackboardServer(HTTPServer):
         print("Starting election")
         sleep(2)
         self.continue_election(self.vessel_id, self.vessel_id, self.rank)
-
-    def assume_leadership(self):
-        pass
-        #self.leader         = True
-        #TODO: send coordination message. Or maybe send that down in the do_POST and only call this when coordination's done
 #------------------------------------------------------------------------------------------------------
-
-
-
-
-
 
 
 #------------------------------------------------------------------------------------------------------
@@ -292,12 +284,9 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         if(self.server.leader_vessel == "" and (not self.server.leader)):
             print('Handle POST-request to elect leader')
             self.do_POST_no_leader()
-        elif(self.server.leader):
-            print('Handle POST-request as leader')
-            self.do_POST_leader()
         else:
-            print('Handle POST-request as slave')
-            self.do_POST_slave()
+            print('Handle POST-request')
+            self.do_POST_leader()
 
     #Function used to handle POST requests before a leader has been elected.
     #Only requests regarding the election are accepted, all others receive
@@ -407,7 +396,23 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
-                nkey = self.server.add_value_to_store(data['entry'][0])
+                #Determine the key of the new entry
+                #If this vessel is the leader, create new key
+                #from current_key attribute in server
+                #Otherwise, if message propagated from server, fetch key
+                #from data
+                #If message from client to non-leader vessel, set key to dummy value
+                #Also, add new entry to local store only if this vessel is the leader
+                #or if the message was propagated from the leader
+                if self.server.leader:
+                    nkey = self.server.add_value_to_store(data['entry'][0])
+                elif 'sentFromLeader' in data:
+                    print('Received post-request from leader')
+                    nkey = int(data['key'][0])
+                    print(nkey)
+                    self.server.add_value_to_store(data['entry'][0], nkey)
+                else:
+                    nkey = None
                 print(data['entry'][0])
                 #The leader includes the assigned key of the new entry
                 #in the propagation data, to ensure that all vessels
@@ -423,14 +428,19 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         elif(self.server.current_key != 0 and
              re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
             #Received a request to either modify or delete a post
+            print("Modify or delete post")
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
-                    self.server.delete_value_in_store(int(self.path.split("/")[2]))
+                    if self.server.leader or 'sentFromLeader' in data:
+                        self.server.delete_value_in_store(int(self.path.split("/")[2]))
+                        print('Delete locally')
                     propData = {'delete' : '1', 'entry' : ''}
                 else:
                     print("Recognized as modify post")
-                    self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
+                    if self.server.leader or 'sentFromLeader' in data:
+                        self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
+                        print('Modify locally')
                     propData = {'delete': '0', 'entry': data['entry'][0]}
 
                 path = self.path
@@ -445,76 +455,18 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # Include the sentFromLeader flag to indicate to the other vessels that
         # the request is not sent from a client and that there is no need to
         # retransmit the request back to the leader.
-        if retransmit:
+        if retransmit and self.server.leader:
+            print('Retransmit as leader')
+            print(path)
             propData['sentFromLeader'] = True
+            print(propData)
             self.server.propagate_value_to_vessels(path, propData)
-
-    #Function used for handling POST requests when the vessel is not
-    #the leader
-    def do_POST_slave(self):
-        print("Receiving a POST on %s" % self.path)
-        # Here, we should check which path was requested and call the right logic based on it
-        # We should also parse the data received
-        # and set the headers for the client
-
-        #Parse the data into a dictionary
-        data = self.parse_POST_request()
-        retransmit = False
-        path       = "" #Variable to store path of the received request
-        propData   = {} #Dictionary to store data to send to the leader.
-                        #Values set depending on what type of request is received
-
-        if(self.path == '/entries'):
-        #Received a request to add a new post
-            print("Recognized as new entry post")
-            try:
-                if('sentFromLeader' in data):
-                    #Modify local store only if the request was sent
-                    #from the leader.
-                    self.server.add_value_to_store(data['entry'][0], int(data['key'][0]))
-                propData = {'entry' : data['entry'][0]}
-                print('Entry: ' + data['entry'][0])
-                path     = '/entries'
-                retransmit = True
-                self.set_HTTP_headers(200)
-            except Exception: #If some data is malformed or missing, return error code
-                self.set_HTTP_headers(400)
-        elif(self.server.current_key != 0 and
-             re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
-            #Received a request to either modify or delete a post
-            try:
-                if(data['delete'][0] == '1'):
-                    print("Recognized as delete post")
-                    if('sentFromLeader' in data):
-                        #Modify local store only if the request was sent from
-                        #the leader
-                        self.server.delete_value_in_store(int(self.path.split("/")[2]))
-                    propData = {'delete' : '1', 'entry' : ''}
-                else:
-                    print("Recognized as modify post")
-                    if('sentFromLeader' in data):
-                        #Modify local store only if the request was sent from
-                        #the leader
-                        self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
-                    propData = {'delete': '0', 'entry': data['entry'][0]}
-
-                path = self.path
-                retransmit = True
-                self.set_HTTP_headers(200)
-            except Exception: #If some data is malformed or missing, return error code
-                self.set_HTTP_headers(400)
-        else: #If request sent to unrecognized path, respond with error code 404
-            self.set_HTTP_headers(404)
-
-        #If the retransmit flag was set, send a copy of the received request
-        #to the leader. However, do this only if the request was not sent
-        #from the leader
-        if retransmit and not('sentFromLeader' in data):
+        elif retransmit and not('sentFromLeader' in data):
             thread = Thread(target=self.server.contact_leader,
                             args=(path, propData))
             thread.daemon = True
             thread.start()
-            #self.server.contact_leader(path, propData)
+
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------

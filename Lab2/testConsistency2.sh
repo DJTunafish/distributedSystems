@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 for i in `seq 1 20`; do
 	RANDOMNR="$(( ( RANDOM % 10 )  + 1 ))"
 	IPPREFIX="10.1.0."
