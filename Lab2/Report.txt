@@ -38,7 +38,7 @@ is indeed the leader. As this message is sent to every vessel once, it incurs
 a cost of n.
 
 ----------------------------------------------------------
-Task 2: Cost of posts
+Task 2: Cost of posts, pros + cons of centralized design
 ----------------------------------------------------------
 
 The cost of posting a new entry is n + 1 in the worst case.
@@ -47,3 +47,15 @@ This server then sends a message to the leader, including all information in
 the original request from the client. The client then sends n-1 messages, propagating
 the request out to all nodes besides itself. Including the initial two messages,
 this makes for a total cost of n + 1.
+
+The obvious positive of this design is that we can be very confident in the
+consistency of the system. Soon after a new entry has been registered by the
+leader vessel, it will be propagated out to all other vessels. As the leader
+is the only one to assign keys to and thus order all entries, we can be certain
+that all entries will have the same order, as soon as they have been propagated
+out properly.
+
+The downside is that all traffic must go through the leader before having any
+effect. This puts a lot of strain on the server and may cause severe slowdowns
+if we have many simultaneous users, potentially causing a very slow response
+time or even timeouts for some users.   
