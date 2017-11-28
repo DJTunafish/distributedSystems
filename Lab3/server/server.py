@@ -45,44 +45,63 @@ class BlackboardServer(HTTPServer):
         # we create the dictionary of values
         self.store = {}
         # We keep a variable of the next id to insert
-        self.current_key = 0
+        self.logical_clock = 0
         # our own ID (IP is 10.1.0.ID)
         self.vessel_id = vessel_id
         # The list of other vessels
         self.vessels = vessel_list
+        # History of modification of entries
+        self.modHistory = {}
+        # List of messages that are dependent on messages that have yet to arrive
+        self.messageQueue = []
 #------------------------------------------------------------------------------------------------------
     # We add a value received to the store
     #value: value to be added to the store
     #Adds a value to the store
     #Returns key of the value
-    def add_value_to_store(self, value):
+    def add_value_to_store(self, value, key=None):
         # We add the value to the store
-        self.store[self.current_key] = value
-        self.current_key += 1
-        return self.current_key - 1
+        if key == None:
+            key = str(self.logical_clock) + str(self.vessel_id)
+        elif key >= self.logical_clock:
+            self.logical_clock = key + 1
+
+        self.store[key]      = value
+        self.modHistory[key] = None
+        return key
 #------------------------------------------------------------------------------------------------------
     # We modify a value received in the store, if the key exists
     # key   = key of the value to modify
     # value = new value
-    def modify_value_in_store(self,key,value):
-        if key in self.store:
+    #TODO TODO TODO: Handle mod of value that hasn't arrived yet
+    def modify_value_in_store(self,key,value,modifying_vessel_clock=None,
+                              modifying_vessel_id=None):
+        if key in self.store and
+           (self.modHistory[key] == None or
+            self.modHistory[key][0] < modifying_vessel_clock or
+            (self.modHistory[key][0] == modifying_vessel_clock and
+             self.modHistory[key][1] < modifying_vessel_id):
+
             self.store[key] = value
+            self.modHistory[key] = [modifying_vessel_clock, modifying_vessel_id]
 #------------------------------------------------------------------------------------------------------
     # We delete a value received from the store, if it exists in the store
     # key = key of value to delete
+    #TODO TODO TODO: Handle del of value that hasn't arrived yet
     def delete_value_in_store(self,key):
-        self.store.pop(key, None)
+        if(key in self.store):
+            self.store.pop(key, None)
 #------------------------------------------------------------------------------------------------------
-    # Contact a specific vessel with a set of variables to transmit to it, via 
+    # Contact a specific vessel with a set of variables to transmit to it, via
     # an HTTP POST request
     # vessel_ip = ip of the vessel to contact
     # path      = path to send the HTTP request to
-    # data      = dictionary of values to include in the post request 
+    # data      = dictionary of values to include in the post request
     def contact_vessel(self, vessel_ip, path, data):
         # the Boolean variable we will return
         success = False
 
-        #Add a propagation flag to the data, to indicate that the vessel 
+        #Add a propagation flag to the data, to indicate that the vessel
         #should not propagate the received valeus further
         data['propagate'] = '1'
         post_content = urlencode(data)
@@ -113,7 +132,7 @@ class BlackboardServer(HTTPServer):
         # we return if we succeeded or not
         return success
 #------------------------------------------------------------------------------------------------------
-    # We send a received value to all the other vessels of the system, via HTTP 
+    # We send a received value to all the other vessels of the system, via HTTP
     # POST requests
     # path = path to send the POST request to
     # data = dictionary of vaues to include in the POST requests
@@ -182,10 +201,10 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         self.set_HTTP_headers(200)
 
         entryElems = ""
-        
-        #Loop through the list of all entries, create HTML element from 
+
+        #Loop through the list of all entries, create HTML element from
         #template for each. Add each of these to the entryElems string
-        for (tag, entry) in self.server.store:
+        for (tag, entry) in sorted(self.server.store.iteritems()):
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
         #Return the generated HTML
@@ -197,9 +216,9 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         entryElems = ""
 
-        #Loop through the list of all entries, create HTML element from 
+        #Loop through the list of all entries, create HTML element from
         #template for each. Add each of these to the entryElems string
-        for (tag, entry) in self.server.store.iteritems():
+        for (tag, entry) in sorted(self.server.store.iteritems()):
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
         #Generate the body of the HTML from the template
@@ -225,37 +244,54 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # and set the headers for the client
 
         #Parse the data into a dictionary
+
+        if('clock' in data and int(data['clock'][0] > self.server.logical_clock)):
+            self.server.logical_clock = int(data['clock'][0]) + 1
+        else:
+            self.server.logical_clock += 1
+
         data = self.parse_POST_request()
         retransmit = False
         path       = "" #Variable to store path to propagate data to on other vessels
-        propData   = {} #Dictionary to store propagation data. Values set 
+        propData   = {'clock'  : self.server.logical_clock + 1,
+                      'sender' : self.server.vessel_id} #Dictionary to store propagation data. Values set
                         #depending on what type of request to propagate
 
         if(self.path == '/entries'):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
-                self.server.add_value_to_store(data['entry'][0])
-                propData = {'entry' : data['entry'][0]}
-                path     = '/entries' 
+                key = None
+                #Check if this is a post received from another server
+                if('clock' in data):
+                    key = data['clock'][0] + data['sender'][0]
+                self.server.add_value_to_store(data['entry'][0], key)
+                propData = ['entry'] = data['entry'][0]}
+                path     = '/entries'
                 retransmit = True
                 self.set_HTTP_headers(200)
             except Exception: #If some data is malformed or missing, return error code
                 self.set_HTTP_headers(400)
-        elif(self.server.current_key != 0 and 
-             re.match("/entries/[0-"+str(self.server.current_key -1)+"]", self.path)):
-            #Received a request to either modify or delete a post 
+        elif(self.server.logical_clock != 0 and
+             re.match("/entries/[0-"+str(self.server.logical_clock -1)+"]", self.path)):
+            #Received a request to either modify or delete a post
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
                     self.server.delete_value_in_store(int(self.path.split("/")[2]))
-                    propData = {'delete' : '1', 'entry' : ''}
+                    propData['delete'] = '1'
+                    propData['entry']  = ''
                 else:
-                    print("Recognized as modify post") 
-                    self.server.modify_value_in_store(int(self.path.split("/")[2]), data['entry'][0])
-                    propData = {'delete': '0', 'entry': data['entry'][0]}
-                    
-                path = self.path    
+                    print("Recognized as modify post")
+                    if('clock' in data):
+                        #TODO
+                    else:
+                        self.server.modify_value_in_store(int(self.path.split("/")[2]),
+                                                          data['entry'][0])
+                    propData['delete'] = '0',
+                    propData['entry']  = data['entry'][0]
+
+                path = self.path
                 retransmit = True
                 self.set_HTTP_headers(200)
             except Exception: #If some data is malformed or missing, return error code
@@ -267,11 +303,12 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # if the propagate flag is not set in the received data. This latter flag
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
-        if retransmit and not('propagate' in data):
+        if retransmit and not('clock' in data):
             # do_POST send the message only when the function finishes
             # We must then create threads if we want to do some heavy computation
             #
             # Random content
+            self.server.logical_clock += 1
             thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, propData) )
             # We kill the process if we kill the server
             thread.daemon = True
