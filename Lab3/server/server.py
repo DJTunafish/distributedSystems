@@ -15,6 +15,9 @@ from httplib import HTTPConnection # Create a HTTP connection, as a client (for 
 from urllib import urlencode # Encode POST content into the HTTP header
 from codecs import open # Open a file
 from threading import  Thread # Thread Management
+
+# Used to compare
+import functools
 #------------------------------------------------------------------------------------------------------
 
 # Global variables for HTML templates
@@ -31,7 +34,6 @@ BOARD_MESSAGE = "Who runs Barter Town?"
 # Static variables definitions
 PORT_NUMBER = 80
 #------------------------------------------------------------------------------------------------------
-
 
 
 
@@ -55,6 +57,25 @@ class BlackboardServer(HTTPServer):
         # List of messages that are dependent on messages that have yet to arrive
         self.messageQueue = []
 #------------------------------------------------------------------------------------------------------
+
+    def check_queue(self, key):
+        # Need to have a removeList, because Python stops loop after concurrent remove
+        # There might be more than 1 msg for this post in the queue
+        removeList = []
+        for msg in self.messageQueue:
+            if msg[1] == key:
+                # modify
+                if msg[0] == 0:
+                    self.modify_value_in_store(msg[1], msg[2], msg[3], msg[4])
+                # delete
+                else:
+                    self.delete_value_in_store(msg[1])
+                removeList.append(msg)
+
+        for msg in removeList:
+            self.messageQueue.remove(msg)
+
+
     # We add a value received to the store
     #value: value to be added to the store
     #Adds a value to the store
@@ -62,35 +83,37 @@ class BlackboardServer(HTTPServer):
     def add_value_to_store(self, value, key=None):
         # We add the value to the store
         if key == None:
-            key = str(self.logical_clock) + str(self.vessel_id)
-        elif key >= self.logical_clock:
-            self.logical_clock = key + 1
+            key = str(self.logical_clock + 1) + '-' + str(self.vessel_id)
 
         self.store[key]      = value
         self.modHistory[key] = None
+        self.check_queue(key)
         return key
 #------------------------------------------------------------------------------------------------------
     # We modify a value received in the store, if the key exists
     # key   = key of the value to modify
     # value = new value
-    #TODO TODO TODO: Handle mod of value that hasn't arrived yet
     def modify_value_in_store(self,key,value,modifying_vessel_clock=None,
                               modifying_vessel_id=None):
-        if key in self.store and
-           (self.modHistory[key] == None or
-            self.modHistory[key][0] < modifying_vessel_clock or
-            (self.modHistory[key][0] == modifying_vessel_clock and
-             self.modHistory[key][1] < modifying_vessel_id):
+        if key in self.store and (self.modHistory[key] == None or
+           self.modHistory[key][0] < modifying_vessel_clock or
+           (self.modHistory[key][0] == modifying_vessel_clock and
+           self.modHistory[key][1] < modifying_vessel_id)):
 
             self.store[key] = value
             self.modHistory[key] = [modifying_vessel_clock, modifying_vessel_id]
+        elif not(key in self.store):
+            # 0 = modify
+            # 1 = delete
+            self.messageQueue.append([0, key, value, modifying_vessel_clock, modifying_vessel_id])
 #------------------------------------------------------------------------------------------------------
     # We delete a value received from the store, if it exists in the store
     # key = key of value to delete
-    #TODO TODO TODO: Handle del of value that hasn't arrived yet
     def delete_value_in_store(self,key):
         if(key in self.store):
             self.store.pop(key, None)
+        else:
+            self.messageQueue.append([1, key])
 #------------------------------------------------------------------------------------------------------
     # Contact a specific vessel with a set of variables to transmit to it, via
     # an HTTP POST request
@@ -137,8 +160,10 @@ class BlackboardServer(HTTPServer):
     # path = path to send the POST request to
     # data = dictionary of vaues to include in the POST requests
     def propagate_value_to_vessels(self, path, data):
+        print("Propagation time!")
         # We iterate through the vessel list
         for vessel in self.vessels:
+            print(vessel)
             # We should not send it to our own IP, or we would create an infinite loop of updates
             if vessel != ("10.1.0.%s" % self.vessel_id):
                 # A good practice would be to try again if the request failed
@@ -197,6 +222,20 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 #------------------------------------------------------------------------------------------------------
 # GET logic - specific path
 #------------------------------------------------------------------------------------------------------
+    #TODO: Write as lambda
+    def compareMsgId(instance_ref, item1, item2):
+        tmp1 = item1[0].split('-')
+        tmp2 = item2[0].split('-')
+        print('------- comparison -------')
+        print(tmp1[0] + ' ' + tmp1[1])
+        print(tmp2[0] + ' ' + tmp2[1])
+
+        if int(tmp1[0]) != int(tmp2[0]):
+            return int(tmp1[0]) < int(tmp2[0])
+        else:
+            return int(tmp1[1]) < int(tmp2[1])
+
+
     def do_GET_entries(self):
         self.set_HTTP_headers(200)
 
@@ -204,7 +243,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         #Loop through the list of all entries, create HTML element from
         #template for each. Add each of these to the entryElems string
-        for (tag, entry) in sorted(self.server.store.iteritems()):
+        for (tag, entry) in sorted(self.server.store.iteritems(), cmp=self.compareMsgId):
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
         #Return the generated HTML
@@ -218,7 +257,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         #Loop through the list of all entries, create HTML element from
         #template for each. Add each of these to the entryElems string
-        for (tag, entry) in sorted(self.server.store.iteritems()):
+        for (tag, entry) in sorted(self.server.store.iteritems(), cmp=self.compareMsgId):
             entryElems += (entry_template % (("entries/" + str(tag)), tag , entry))
 
         #Generate the body of the HTML from the template
@@ -245,12 +284,14 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         #Parse the data into a dictionary
 
+        data = self.parse_POST_request()
+        print(data)
+
         if('clock' in data and int(data['clock'][0] > self.server.logical_clock)):
             self.server.logical_clock = int(data['clock'][0]) + 1
         else:
             self.server.logical_clock += 1
 
-        data = self.parse_POST_request()
         retransmit = False
         path       = "" #Variable to store path to propagate data to on other vessels
         propData   = {'clock'  : self.server.logical_clock + 1,
@@ -264,13 +305,18 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 key = None
                 #Check if this is a post received from another server
                 if('clock' in data):
-                    key = data['clock'][0] + data['sender'][0]
+                    print('got in here - clock in data test')
+                    key = data['clock'][0] + '-' + data['sender'][0]
+                print('Adding value to store')
                 self.server.add_value_to_store(data['entry'][0], key)
-                propData = ['entry'] = data['entry'][0]}
+                print('Adding done')
+                propData['entry'] = data['entry'][0]
                 path     = '/entries'
                 retransmit = True
+                print("Retransmit set")
                 self.set_HTTP_headers(200)
-            except Exception: #If some data is malformed or missing, return error code
+            except Exception as e: #If some data is malformed or missing, return error code
+                print(e)
                 self.set_HTTP_headers(400)
         elif(self.server.logical_clock != 0 and
              re.match("/entries/[0-"+str(self.server.logical_clock -1)+"]", self.path)):
@@ -284,11 +330,14 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 else:
                     print("Recognized as modify post")
                     if('clock' in data):
-                        #TODO
+                        self.server.modify_value_in_store(int(self.path.split("/")[2]),
+                                                          data['entry'][0],
+                                                          int(data['clock'][0]),
+                                                          int(data['sender'][0]))
                     else:
                         self.server.modify_value_in_store(int(self.path.split("/")[2]),
                                                           data['entry'][0])
-                    propData['delete'] = '0',
+                    propData['delete'] = '0'
                     propData['entry']  = data['entry'][0]
 
                 path = self.path
@@ -303,11 +352,15 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # if the propagate flag is not set in the received data. This latter flag
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
+        print("Transmit condition: " + str(retransmit and not('clock' in data)))
+        print(retransmit)
+        print(data)
         if retransmit and not('clock' in data):
             # do_POST send the message only when the function finishes
             # We must then create threads if we want to do some heavy computation
             #
             # Random content
+            print("Retransmitting")
             self.server.logical_clock += 1
             thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, propData) )
             # We kill the process if we kill the server
