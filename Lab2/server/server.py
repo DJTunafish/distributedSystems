@@ -17,6 +17,7 @@ from codecs import open # Open a file
 from threading import  Thread # Thread Management
 from random import randint
 from time import sleep
+import time
 #------------------------------------------------------------------------------------------------------
 
 # Global variables for HTML templates
@@ -56,6 +57,8 @@ class BlackboardServer(HTTPServer):
         self.rank   = rank
         self.leader = False
         self.leader_vessel = ""
+        self.t_0 = 0
+        self.t_total = 0
 #------------------------------------------------------------------------------------------------------
     # We add a value received to the store
     #value: value to be added to the store
@@ -380,6 +383,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
             self.set_HTTP_headers(503)
 
     def do_POST_leader(self):
+        if self.server.t_0 == 0 and self.path != '/election':
+            self.server.t_0 = time.time()
         print("Receiving a POST on %s" % self.path)
         # Here, we should check which path was requested and call the right logic based on it
         # We should also parse the data received
@@ -455,6 +460,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # Include the sentFromLeader flag to indicate to the other vessels that
         # the request is not sent from a client and that there is no need to
         # retransmit the request back to the leader.
+        self.server.t_total = time.time()
+        print("Diff:" + str(self.server.t_total - self.server.t_0))
         if retransmit and self.server.leader:
             print('Retransmit as leader')
             print(path)

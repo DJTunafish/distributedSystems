@@ -84,9 +84,9 @@ class Lab1():
 	# run(self)
 	# Run the lab 1
 	def run(self):
-		"Run the lab 1 simulation environment"
+		"Run the lab 2 simulation environment"
 		# local variables
-		nbOfServersPerRegion = 5
+		nbOfServersPerRegion = 4
 		nbOfClientsPerRegion = 2
 		nbOfRegions = 2
 		localJitter = 10 # ms, the evolution of the time between two consecutive packets

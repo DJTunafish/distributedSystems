@@ -15,6 +15,7 @@ from httplib import HTTPConnection # Create a HTTP connection, as a client (for 
 from urllib import urlencode # Encode POST content into the HTTP header
 from codecs import open # Open a file
 from threading import  Thread # Thread Management
+import time
 
 # Used to compare
 import functools
@@ -56,6 +57,11 @@ class BlackboardServer(HTTPServer):
         self.modHistory = {}
         # List of messages that are dependent on messages that have yet to arrive
         self.messageQueue = []
+        # time of first request received
+        self.t_0 = 0
+        # time of last request received
+        self.t_total = 0
+
 #------------------------------------------------------------------------------------------------------
 
     def check_queue(self, key):
@@ -95,6 +101,7 @@ class BlackboardServer(HTTPServer):
     # value = new value
     def modify_value_in_store(self,key,value,modifying_vessel_clock=None,
                               modifying_vessel_id=None):
+        print('About to modify a post with key ' + key)
         if key in self.store and (self.modHistory[key] == None or
            self.modHistory[key][0] < modifying_vessel_clock or
            (self.modHistory[key][0] == modifying_vessel_clock and
@@ -105,14 +112,17 @@ class BlackboardServer(HTTPServer):
         elif not(key in self.store):
             # 0 = modify
             # 1 = delete
+            print("Stash message for later")
             self.messageQueue.append([0, key, value, modifying_vessel_clock, modifying_vessel_id])
 #------------------------------------------------------------------------------------------------------
     # We delete a value received from the store, if it exists in the store
     # key = key of value to delete
     def delete_value_in_store(self,key):
+        print('About to delete a post with key ' + key)
         if(key in self.store):
             self.store.pop(key, None)
         else:
+            print("Stash message for later")
             self.messageQueue.append([1, key])
 #------------------------------------------------------------------------------------------------------
     # Contact a specific vessel with a set of variables to transmit to it, via
@@ -160,10 +170,8 @@ class BlackboardServer(HTTPServer):
     # path = path to send the POST request to
     # data = dictionary of vaues to include in the POST requests
     def propagate_value_to_vessels(self, path, data):
-        print("Propagation time!")
         # We iterate through the vessel list
         for vessel in self.vessels:
-            print(vessel)
             # We should not send it to our own IP, or we would create an infinite loop of updates
             if vessel != ("10.1.0.%s" % self.vessel_id):
                 # A good practice would be to try again if the request failed
@@ -226,9 +234,6 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
     def compareMsgId(instance_ref, item1, item2):
         tmp1 = item1[0].split('-')
         tmp2 = item2[0].split('-')
-        print('------- comparison -------')
-        print(tmp1[0] + ' ' + tmp1[1])
-        print(tmp2[0] + ' ' + tmp2[1])
 
         if int(tmp1[0]) != int(tmp2[0]):
             return int(tmp1[0]) < int(tmp2[0])
@@ -277,6 +282,9 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 # Request handling - POST
 #------------------------------------------------------------------------------------------------------
     def do_POST(self):
+        if self.server.t_0 == 0:
+            self.server.t_0 = time.time()
+
         print("Receiving a POST on %s" % self.path)
         # Here, we should check which path was requested and call the right logic based on it
         # We should also parse the data received
@@ -285,7 +293,6 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Parse the data into a dictionary
 
         data = self.parse_POST_request()
-        print(data)
 
         if('clock' in data and int(data['clock'][0] > self.server.logical_clock)):
             self.server.logical_clock = int(data['clock'][0]) + 1
@@ -305,37 +312,34 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 key = None
                 #Check if this is a post received from another server
                 if('clock' in data):
-                    print('got in here - clock in data test')
                     key = data['clock'][0] + '-' + data['sender'][0]
-                print('Adding value to store')
                 self.server.add_value_to_store(data['entry'][0], key)
-                print('Adding done')
                 propData['entry'] = data['entry'][0]
                 path     = '/entries'
                 retransmit = True
-                print("Retransmit set")
                 self.set_HTTP_headers(200)
             except Exception as e: #If some data is malformed or missing, return error code
                 print(e)
                 self.set_HTTP_headers(400)
         elif(self.server.logical_clock != 0 and
-             re.match("/entries/[0-"+str(self.server.logical_clock -1)+"]", self.path)):
+             #re.match("/entries/[0-"+str(self.server.logical_clock -1)+"]-[1-"+len(self.server.vessels)+"]", self.path)):
+            re.match("/entries/\d+-\d+", self.path)):
             #Received a request to either modify or delete a post
             try:
                 if(data['delete'][0] == '1'):
                     print("Recognized as delete post")
-                    self.server.delete_value_in_store(int(self.path.split("/")[2]))
+                    self.server.delete_value_in_store(self.path.split("/")[2])
                     propData['delete'] = '1'
                     propData['entry']  = ''
                 else:
                     print("Recognized as modify post")
                     if('clock' in data):
-                        self.server.modify_value_in_store(int(self.path.split("/")[2]),
+                        self.server.modify_value_in_store(self.path.split("/")[2],
                                                           data['entry'][0],
                                                           int(data['clock'][0]),
                                                           int(data['sender'][0]))
                     else:
-                        self.server.modify_value_in_store(int(self.path.split("/")[2]),
+                        self.server.modify_value_in_store(self.path.split("/")[2],
                                                           data['entry'][0])
                     propData['delete'] = '0'
                     propData['entry']  = data['entry'][0]
@@ -343,7 +347,8 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                 path = self.path
                 retransmit = True
                 self.set_HTTP_headers(200)
-            except Exception: #If some data is malformed or missing, return error code
+            except Exception as e: #If some data is malformed or missing, return error code
+                print(e)
                 self.set_HTTP_headers(400)
         else: #If request sent to unrecognized path, respond with error code 404
             self.set_HTTP_headers(404)
@@ -352,15 +357,16 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         # if the propagate flag is not set in the received data. This latter flag
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
-        print("Transmit condition: " + str(retransmit and not('clock' in data)))
-        print(retransmit)
-        print(data)
+        self.server.t_total = time.time()
+        print("Total:" + str(self.server.t_total))
+        print("t_0:" + str(self.server.t_0))
+        print("Diff:" + str(self.server.t_total - self.server.t_0))
+        #print(self.server.t_total - self.server.t_0)
         if retransmit and not('clock' in data):
             # do_POST send the message only when the function finishes
             # We must then create threads if we want to do some heavy computation
             #
             # Random content
-            print("Retransmitting")
             self.server.logical_clock += 1
             thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, propData) )
             # We kill the process if we kill the server
