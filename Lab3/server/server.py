@@ -64,6 +64,10 @@ class BlackboardServer(HTTPServer):
 
 #------------------------------------------------------------------------------------------------------
 
+    #Iterate through the queue of stored messages to see if
+    #any of them pertain to the message indicated by the key
+    #parameter. If so, call the appropriate function to apply
+    #the message
     def check_queue(self, key):
         # Need to have a removeList, because Python stops loop after concurrent remove
         # There might be more than 1 msg for this post in the queue
@@ -92,7 +96,10 @@ class BlackboardServer(HTTPServer):
             key = str(self.logical_clock + 1) + '-' + str(self.vessel_id)
 
         self.store[key]      = value
+        #Add an empty entry to the modification history dictionary
         self.modHistory[key] = None
+        #Check the queue of stored messages to see if any of them pertain
+        #to the entry that was just added
         self.check_queue(key)
         return key
 #------------------------------------------------------------------------------------------------------
@@ -101,7 +108,19 @@ class BlackboardServer(HTTPServer):
     # value = new value
     def modify_value_in_store(self,key,value,modifying_vessel_clock=None,
                               modifying_vessel_id=None):
-        print('About to modify a post with key ' + key)
+        #We apply the received modification only if there is an entry with
+        #the specified key and if one of the following conditions hold:
+        # (i)  The entry has never been modified previously
+        # (ii) The latest modification of the message was done by a message that had
+        #      a lower logical clock than the current message
+        # (iii) The latest modification of the message was done by a message that had
+        #       an equivalent logical clock as the current message, but said message
+        #       was sent from a server with a lower id
+        #
+        #Further, if the specified key is not currently within the store,
+        #this may be because the message has not arrived to this server yet.
+        #Hence, if the specified key does not exist within the store, we add
+        #it to the messageQueue to apply later, once the specified entry arrives
         if key in self.store and (self.modHistory[key] == None or
            self.modHistory[key][0] < modifying_vessel_clock or
            (self.modHistory[key][0] == modifying_vessel_clock and
@@ -118,11 +137,12 @@ class BlackboardServer(HTTPServer):
     # We delete a value received from the store, if it exists in the store
     # key = key of value to delete
     def delete_value_in_store(self,key):
-        print('About to delete a post with key ' + key)
         if(key in self.store):
             self.store.pop(key, None)
         else:
-            print("Stash message for later")
+            #If the key does not exist in the store, it may be because the
+            #entry hasn't arrived on this server yet. Hence, we store the
+            #delete-message for later use
             self.messageQueue.append([1, key])
 #------------------------------------------------------------------------------------------------------
     # Contact a specific vessel with a set of variables to transmit to it, via
@@ -294,6 +314,12 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         data = self.parse_POST_request()
 
+        #Our solution uses a logical clock to determine the ordering
+        #of entries. When a post is received, determine if it came from
+        #another server. If so, check the logical clock included in the post
+        #and compare it to the local clock. Select the greater of the two,
+        #set the local clock to this value and then increment the clock by 1.
+        #If the post request came from a client, increment the logical clock by 1.
         if('clock' in data and int(data['clock'][0] > self.server.logical_clock)):
             self.server.logical_clock = int(data['clock'][0]) + 1
         else:
@@ -301,16 +327,20 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 
         retransmit = False
         path       = "" #Variable to store path to propagate data to on other vessels
+        #Dictionary to store propagation data. Values set
+        #depending on what type of request to propagate
+        #The value of the local clock and the id of the server always included
         propData   = {'clock'  : self.server.logical_clock + 1,
-                      'sender' : self.server.vessel_id} #Dictionary to store propagation data. Values set
-                        #depending on what type of request to propagate
+                      'sender' : self.server.vessel_id}
 
         if(self.path == '/entries'):
         #Received a request to add a new post
             print("Recognized as new entry post")
             try:
                 key = None
-                #Check if this is a post received from another server
+                #Check if this is a post received from another server.
+                #If so, use [clock-value]-[sender-id] as the key for the entry
+                #on this server
                 if('clock' in data):
                     key = data['clock'][0] + '-' + data['sender'][0]
                 self.server.add_value_to_store(data['entry'][0], key)
@@ -333,6 +363,13 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
                     propData['entry']  = ''
                 else:
                     print("Recognized as modify post")
+                    #If the modify request was made by a client, we always
+                    #change the local value
+                    #If the modify request was sent from another server, we
+                    #need to include information regarding the clock of said
+                    #server and its id, so that the modify_value_in_store
+                    #function can make a decision on whether to apply the
+                    #modification
                     if('clock' in data):
                         self.server.modify_value_in_store(self.path.split("/")[2],
                                                           data['entry'][0],
@@ -353,20 +390,22 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         else: #If request sent to unrecognized path, respond with error code 404
             self.set_HTTP_headers(404)
 
+        #Print information regarding the amount of time that has passed since
+        #the first request was received
+        self.server.t_total = time.time()
+        print("Diff:" + str(self.server.t_total - self.server.t_0))
+
         # If the retransmit flag is set, call the propagation function, but only
         # if the propagate flag is not set in the received data. This latter flag
         # indicates that the POST request was sent from another vessel and should
         # not be propagated by this vessel
-        self.server.t_total = time.time()
-        print("Total:" + str(self.server.t_total))
-        print("t_0:" + str(self.server.t_0))
-        print("Diff:" + str(self.server.t_total - self.server.t_0))
-        #print(self.server.t_total - self.server.t_0)
         if retransmit and not('clock' in data):
             # do_POST send the message only when the function finishes
             # We must then create threads if we want to do some heavy computation
             #
             # Random content
+            #Increment the local logical clock since we consider sending a message
+            #as an event
             self.server.logical_clock += 1
             thread = Thread(target=self.server.propagate_value_to_vessels,args=(path, propData) )
             # We kill the process if we kill the server
