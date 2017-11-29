@@ -1,38 +1,12 @@
 ---------------------------------------------------
-Description of propagation(Report for task 1 and 2)
+Cost analysis
 ---------------------------------------------------
-When a post request(which can be either a request to add, modify or delete an entry)
-is made to any server, the server in question sends identical requests to all other servers.
-In order to prevent infinite loops where this propagation of the original request
-causes all other servers to propagate the requests that they receive, the 
-server first adds a flag to the original request before propagating it, indicating
-that the request is made to propagate a value and should not be propagated further.
-
-
----------------------------------------------------
-Is the system consistent?(Report for task 3)
----------------------------------------------------
-The short answer is that no, the system is not consistent. 
-If one only considered
-a blackboard that allowed users to add posts and didn't care about their order,
-then yes, the system would be consistent(assuming that there all messages 
-arrive safely).
-
-The inconsistency in the system comes from the fact that, should several 
-requests be made to different servers at roughly the same time, these changes 
-are resolved at different times on different servers, which for instance causes
-blackboard entries to appear in different orders on different servers. 
-
-For instance, let's say that we have two clients, c1 & c2, and 2 servers, s1, and s2.
-We assume that both servers are initially empty. c1 sends a new entry 
-p1 to s1 at the same time as c2 sends a new entry p2 to s2 and both servers then 
-propagate their respective messages to each other. On s1, the entries will appear
-in the order (p1, p2) while on s2 the entries will appear in the order (p2, p1). 
-This causes further problems when users attempt to modify or delete entries,
-as entries are identified by their order on the blackboard. 
-
-Further inconsistencies may arise when multiple users attempt to modify the same
-message simultaneously. This causes a race condition for every server in the 
-application, as their value for said entry will be determined by which propagated
-modify request arrives last, which will likely cause some servers to hold one 
-value while others hold the other. 
+Our implementation of the eventually consistent blackboard
+has a cost of n-1 for every message posted to a server, which is not
+a great improvement over the cost of the centralized blackboard (n+1).
+We can also see in the plot of the time required for complete propagation
+(see TimeComparisonPlot.png) that the actual time until complete synchronization
+occurs has not greatly improved. 
+What is gained, however, is that there is no longer a single point of failure.
+We still have consistency(eventually, of course) in the system, but are no longer 
+dependent on a leader and do not need to run any election protocols.
