@@ -252,13 +252,13 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
 #------------------------------------------------------------------------------------------------------
     #TODO: Write as lambda
     def compareMsgId(instance_ref, item1, item2):
-        tmp1 = item1[0].split('-')
-        tmp2 = item2[0].split('-')
+        msg1 = item1[0].split('-')
+        msg2 = item2[0].split('-')
 
-        if int(tmp1[0]) != int(tmp2[0]):
-            return int(tmp1[0]) < int(tmp2[0])
+        if int(msg1[0]) != int(msg2[0]):
+            return int(msg1[0]) - int(msg2[0])
         else:
-            return int(tmp1[1]) < int(tmp2[1])
+            return int(msg1[1]) - int(msg2[1])
 
 
     def do_GET_entries(self):
