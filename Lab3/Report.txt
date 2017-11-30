@@ -1,4 +1,60 @@
 ---------------------------------------------------
+Consistency algorithm description
+---------------------------------------------------
+In our implementation of Lab 3, we utilize logical clocks to achieve eventual
+consistency for all servers. When a client sends a post request to
+a server, the following occurs:
+
+    (i)  The logical clock of the server is incremented by 1
+    (ii) The server makes the appropriate modifications to its local store.
+         Entries are uniquely identified by the logical clock of the server
+         they were posted to and the id of said server.
+    (iii)The server propagates the request to all other servers, including
+         its logical clock and its id in the message.
+
+When receiving a propagation message from another server, the following occurs:
+
+    (i)   The clock in the message is compared to the local logical clock.
+          The local logical clock is set to the greater of the two, then
+          incremented by 1.
+    (ii)  Depending on the type of message received, different actions need
+          to be taken
+
+        (New entry) If the message contains a new entry, we simply add it to the
+                    local store. Ordering of messages is consistent across servers
+                    as each entry is uniquely identified as described above.
+                    When displaying the board, the server sorts all entries primarily
+                    by their logical clock timestamps and secondarily by the id
+                    of the server they were originally posted to.
+        (Delete)    If the key to be deleted exists in the local store,
+                    we simply delete it. However, there are two explanations for
+                    the scenario where the key doesn't exist in the store
+
+                    (i)  The entry has already been deleted because of a request
+                         from another server, or because of a request from a client
+                         to this server. We detect this by maintaining a Set of
+                         all keys that have been deleted and checking if the
+                         key to be deleted is a member of said set.
+                    (ii) If the key to be deleted is not in said deletion history
+                         set, it means that the message to be deleted has not
+                         yet arrived at this server. If this is the case, we store
+                         the message for later.
+        (Modify)    For modification requests we have the same problems to deal
+                    with as the delete requests(if the key doesn't exist, what
+                    do we do?), which are dealt with in the same manner.
+                    The unique problem for modification requests is deciding whether
+                    or not they should be applied. A modification request may
+                    arrive later than a more recent request. To resolve this,
+                    we store information for every entry on the logical clock
+                    of the last message that modified it, as well as the id of
+                    the server that it was sent from. We apply a received
+                    modification request only if the entry has not been modified
+                    previously or if the logical clock of the message is greater
+                    than the previous modification request(using server ids as
+                    a tie-breaker).
+
+
+---------------------------------------------------
 Cost analysis
 ---------------------------------------------------
 Our implementation of the eventually consistent blackboard
@@ -6,7 +62,7 @@ has a cost of n-1 for every message posted to a server, which is not
 a great improvement over the cost of the centralized blackboard (n+1).
 We can also see in the plot of the time required for complete propagation
 (see TimeComparisonPlot.png) that the actual time until complete synchronization
-occurs has not greatly improved. 
+occurs has not greatly improved.
 What is gained, however, is that there is no longer a single point of failure.
-We still have consistency(eventually, of course) in the system, but are no longer 
+We still have consistency(eventually, of course) in the system, but are no longer
 dependent on a leader and do not need to run any election protocols.
