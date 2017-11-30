@@ -15,6 +15,7 @@ from httplib import HTTPConnection # Create a HTTP connection, as a client (for 
 from urllib import urlencode # Encode POST content into the HTTP header
 from codecs import open # Open a file
 from threading import  Thread # Thread Management
+from sets import Set
 import time
 
 # Used to compare
@@ -53,6 +54,8 @@ class BlackboardServer(HTTPServer):
         self.vessel_id = vessel_id
         # The list of other vessels
         self.vessels = vessel_list
+        # history of deleted items
+        self.deleteHistory = Set([])
         # History of modification of entries
         self.modHistory = {}
         # List of messages that are dependent on messages that have yet to arrive
@@ -61,6 +64,7 @@ class BlackboardServer(HTTPServer):
         self.t_0 = 0
         # time of last request received
         self.t_total = 0
+
 
 #------------------------------------------------------------------------------------------------------
 
@@ -128,22 +132,23 @@ class BlackboardServer(HTTPServer):
 
             self.store[key] = value
             self.modHistory[key] = [modifying_vessel_clock, modifying_vessel_id]
-        elif not(key in self.store):
+        elif not(key in self.store and key in self.deleteHistory):
             # 0 = modify
             # 1 = delete
-            print("Stash message for later")
             self.messageQueue.append([0, key, value, modifying_vessel_clock, modifying_vessel_id])
 #------------------------------------------------------------------------------------------------------
     # We delete a value received from the store, if it exists in the store
     # key = key of value to delete
+    #TODO: Delete history
     def delete_value_in_store(self,key):
         if(key in self.store):
             self.store.pop(key, None)
-        else:
+        elif not (key in self.deleteHistory):
             #If the key does not exist in the store, it may be because the
             #entry hasn't arrived on this server yet. Hence, we store the
             #delete-message for later use
             self.messageQueue.append([1, key])
+            self.deleteHistory.add(key)
 #------------------------------------------------------------------------------------------------------
     # Contact a specific vessel with a set of variables to transmit to it, via
     # an HTTP POST request
