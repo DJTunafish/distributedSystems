@@ -22,6 +22,7 @@ import functools
 
 # Global variables for HTML templates
 voting_template = ""
+vote_result_template = ""
 
 AUTHORS = "Erik Jungmark & Patrick Franz"
 
@@ -47,7 +48,7 @@ class ByzantineServer(HTTPServer):
         #Number of byzantine servers present
         self.byzantineServers = byzantineAmount
         #Votes received from other nodes this round
-        self.receivedVotes = []
+        self.receivedVotes = {}
         #Result vectors received this round
         self.receivedResultVectors = []
         #Result of latest voting round
@@ -111,7 +112,7 @@ class ByzantineServer(HTTPServer):
         for vessel in self.vessels:
             if vessel != ("10.1.0.%s" % self.vessel_id):
                 self.contact_vessel(vessel, path, data[i])
-                i += 1 
+                i += 1
 #------------------------------------------------------------------------------------------------------
 
 
@@ -148,13 +149,20 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 	# This function contains the logic executed when this server receives a GET request
 	# This function is called AUTOMATICALLY upon reception and is executed as a thread!
     def do_GET(self):
-        self.set_HTTP_headers(200)
+        if self.path == "/":
+            self.wfile.write(voting_template)
+            self.set_HTTP_headers(200)
+        elif self.path == "/vote/result":
+            result = "Local result: " + self.server.result
+            if self.server.result == None:
+                result = "No votes performed yet"
 
-        result = self.server.result
-        if self.server.result == None
-            result = "No votes performed yet"
+            html = vote_result_template % ("")
 
-        self.wfile.write(voting_template % result)
+            self.wfile.write(html)
+        else:
+            self.set_HTTP_headers(500)
+
 #------------------------------------------------------------------------------------------------------
 # Request handling - POST
 #------------------------------------------------------------------------------------------------------
@@ -187,14 +195,46 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             self.server.propagate_value_to_vessels("/vote", {'resultVector' : resultVector})
 
     def compute_round_2(self):
-        pass
+        finalVector = []
+        for i in range(0, len(self.server.receivedResultVectors)):
+            retreatVotes = 0
+            attackVotes  = 0
+            for vectorEntry in self.server.receivedResultVectors:
+                if vectorEntry:
+                    attackVotes += 1
+                else:
+                    retreatVotes += 1
+            #TODO: Not sure about below logic, check slides
+            if attackVotes > retreatVotes:
+                finalVector.append(True)
+            elif retreatVotes > attackVotes:
+                finalVector.append(False)
+            else:
+                finalVector.append(None)
+
+        attackVotes = 0
+        retreatVotes = 0
+        for vote in finalVector:
+            if vote == True:
+                attackVotes += 1
+            elif vote == False:
+                retreatVotes += 1
+
+        if attackVotes > retreatVotes:
+            self.server.result = 'Attack!'
+        else:
+            self.server.result = 'Retreat!'
+
+        self.server.receivedVotes = {}
+        self.server.receivedResultVectors = []
+
 
     def parse_result_vector(self, vector):
         self.set_HTTP_headers(200)
         parsedVector = []
         for vote in vector:
             parsedVector.append(vote == 'True')
-        self.server.result_vectors.append(parsedVector)
+        self.server.receivedResultVectors.append(parsedVector)
 
     def vote(self):
         if self.path == "/vote/attack":
@@ -239,7 +279,7 @@ if __name__ == '__main__':
     vessel_list = []
     vessel_id = 0
     # Checking the arguments
-    if len(sys.argv) != 3: # 2 args, the script and the vessel name
+    if len(sys.argv) != 4: # 2 args, the script and the vessel name
         print("Arguments: vessel_ID number_of_vessels number_of_byzantine")
     else:
         # We need to know the vessel IP
@@ -248,7 +288,8 @@ if __name__ == '__main__':
         for i in range(1, int(sys.argv[2])+1):
             vessel_list.append("10.1.0.%d" % i) # We can add ourselves, we have a test in the propagation
 
-        voting_template = open('server/vote_frontpage_template.html', 'rb')
+        voting_template = open('server/vote_frontpage_template.html', 'rb').read()
+        vote_result_template = open('server/vote_result_template.html', 'rb').read()
 
         # We launch a server
         server = ByzantineServer(('', PORT_NUMBER), ByzantineRequestHandler, vessel_id, vessel_list, int(sys.argv[3]))
