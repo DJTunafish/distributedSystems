@@ -2,7 +2,7 @@
 #------------------------------------------------------------------------------------------------------
 # TDA596 - Lab 1
 # This script creates the distributed system, runs the simulation and launches the servers app
-# Contains two classes: Lab1Topology and Lab1
+# Contains two classes: Lab4Topology and Lab1
 # This script does not need any modification
 # Author: Valentin Poirot <poirotv@chalmers.se>
 #------------------------------------------------------------------------------------------------------
@@ -19,7 +19,7 @@ from mininet.cli import CLI # Command Line Interface
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
-# Lab1Topology - class inheriting from mininet.topo.Topo, defines the network topology
+# Lab4Topology - class inheriting from mininet.topo.Topo, defines the network topology
 class Lab4Topology( Topo ):
 	"Creates the network topology on which the lab 1 runs"
 #------------------------------------------------------------------------------------------------------
@@ -77,9 +77,9 @@ class Lab4Topology( Topo ):
 class Lab1():
 #------------------------------------------------------------------------------------------------------
 	# Open an xterm and launch a specific command
-	def startServer(self, server, nbOfServers):
+	def startServer(self, server, nbOfServers, nbOfByzantine):
 		# Call mininet.term.makeTerm
-		makeTerm(node=server, cmd="python server/server.py %s %d" % (server.IP().replace("10.1.0.",""), nbOfServers) )
+		makeTerm(node=server, cmd="python server/server.py %s %d" % (server.IP().replace("10.1.0.",""), nbOfServers, nbOfByzantine) )
 #------------------------------------------------------------------------------------------------------
 	# run(self)
 	# Run the lab 1
@@ -88,10 +88,11 @@ class Lab1():
 		# local variables
 		nbOfServersPerRegion = 5
 		nbOfClientsPerRegion = 2
+        byzantineServers     = 1
 		nbOfRegions = 9
 		localJitter = 10 # ms, the evolution of the time between two consecutive packets
 		# We create the topology
-		topology = Lab1Topology(nbOfServersPerRegion, nbOfClientsPerRegion, nbOfRegions)
+		topology = Lab4Topology(nbOfServersPerRegion, nbOfClientsPerRegion, nbOfRegions, byzantineServers)
 		# We create the simulation
 		# Set the topology, the class for links and interfaces, the mininet environment must be cleaned up before launching, we should build now the topology
 		simulation = Mininet(topo = topology, link = TCLink, intf = TCIntf, cleanup = True, build = True, ipBase='10.1.0.0/24')

@@ -1,0 +1,18 @@
+---------------------------------------------
+Election algorithm analysis
+---------------------------------------------
+
+The entire leader election process has a cost of n^2 + n.
+When the vessels are created, each starts their own election.
+A single election is sent through the entire logical ring, ie. it is sent
+once to and retransmitted by every node, before it reaches the vessel that
+initiated it. As such one election has a cost of n. With n elections being started,
+the election process has cost n^2. After this, the elected leader sends a coordination
+message to all nodes by passing it through the logical ring. Sending this coordination
+message around the ring also has cost n, so the final cost is n^2 + n. 
+
+---------------------------------------------
+Centralized blackboard post
+---------------------------------------------
+
+The cost of posting a new entry to the blackboard is n + 2.

@@ -36,7 +36,7 @@ PORT_NUMBER = 80
 #------------------------------------------------------------------------------------------------------
 class ByzantineServer(HTTPServer):
     #------------------------------------------------------------------------------------------------------
-    def __init__(self, server_address, handler, node_id, vessel_list):
+    def __init__(self, server_address, handler, node_id, vessel_list, byzantineAmount):
         # We call the super init
         HTTPServer.__init__(self,server_address, handler)
         # we create the dictionary of values
@@ -44,6 +44,8 @@ class ByzantineServer(HTTPServer):
         self.vessel_id = vessel_id
         # The list of other vessels
         self.vessels = vessel_list
+        #Number of byzantine servers present
+        self.byzantineServers = byzantineAmount
         #Votes received from other nodes this round
         self.receivedVotes = []
         #Result vectors received this round
@@ -62,7 +64,6 @@ class ByzantineServer(HTTPServer):
 
         #Add a propagation flag to the data, to indicate that the vessel
         #should not propagate the received valeus further
-        data['propagate'] = '1'
         post_content = urlencode(data)
         # the HTTP header must contain the type of data we are transmitting, here URL encoded
         headers = {"Content-type": "application/x-www-form-urlencoded"}
@@ -103,6 +104,14 @@ class ByzantineServer(HTTPServer):
                 # A good practice would be to try again if the request failed
                 # Here, we do it only once
                 self.contact_vessel(vessel, path, data)
+
+    #Send first value to first server, second value to second server, etc
+    def propagate_byzantine(self, path, dataSets):
+        i = 0
+        for vessel in self.vessels:
+            if vessel != ("10.1.0.%s" % self.vessel_id):
+                self.contact_vessel(vessel, path, data[i])
+                i += 1 
 #------------------------------------------------------------------------------------------------------
 
 
@@ -155,21 +164,32 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         if 'resultVector' in data:
             self.parse_result_vector(data['resultVector'])
 
-            if len(self.server.result_vectors) == (len(self.server.vessels) - 1):
+            if len(self.server.receivedResultVectors) == (len(self.server.vessels) - 1):
                 self.compute_round_2()
         elif 'generalVote' in data:
-            self.receive_vote()
+            self.receive_vote(data)
 
-            if len(self.server.votes) == len(self.server.vessels):
+            if len(self.server.receivedVotes) == len(self.server.vessels):
                 self.compute_round_1()
         else:
             self.vote()
 
     def compute_round_1(self):
+        if self.byzantine:
+            vectors = compute_byzantine_vote_round2(len(self.server.vessels) - self.server.byzantineServers,
+                                                    len(self.server.vessels), True)
+            #TODO: Something else as tiebreaker?
+            self.server.propagate_byzantine("/vote", vectors)
+        else:
+            resultVector = []
+            for (key, val) in sorted(self.server.receivedVotes):
+                resultVector.append(val)
+            self.server.propagate_value_to_vessels("/vote", {'resultVector' : resultVector})
 
     def compute_round_2(self):
+        pass
 
-    def parse_result_vector(self, vetor):
+    def parse_result_vector(self, vector):
         self.set_HTTP_headers(200)
         parsedVector = []
         for vote in vector:
@@ -178,23 +198,36 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
     def vote(self):
         if self.path == "/vote/attack":
-
+            self.server.byzantine = False
+            self.server.propagate_value_to_vessels('/vote', {'generalVote' : True,
+                                                             'sender'      : self.server.vessel_id})
+            self.server.receivedVotes[self.server.vessel_id] = False
         elif self.path == "/vote/retreat":
-
+            self.server.byzantine = False
+            self.server.propagate_value_to_vessels('/vote', {'generalVote' : False,
+                                                             'sender' : self.server.vessel_id})
+            self.server.receivedVotes[self.server.vessel_id] = True
         elif self.path == "/vote/byzantine":
+            self.server.byzantine = True
+            votes = compute_byzantine_vote_round1(len(self.server.vessels) - self.sever.byzantineServers,
+                                                  len(self.server.vessels), True)
+            #TODO: Set tie-breaker to something fancy?
+            propData = []
+            for vote in votes:
+                d = {'generalVote' : vote,
+                     'sender'      : self.server.vessel_id}
+                propData.append(d)
 
+            self.server.propagate_byzantine('/vote', propData)
         else:
             self.set_HTTP_headers(500)
 
-    def receive_vote(self):
-        if self.path == "/vote/attack":
-
-        elif self.path == "/vote/retreat":
-
+    def receive_vote(self, data):
+        if self.path == "/vote":
+            if int(data['sender'][0]) not in self.server.receivedVotes:
+                self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0] == True
         else:
             self.set_HTTP_headers(500)
-
-        self.server.propagate_value_to_vessels()
 
 #------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------------
@@ -207,7 +240,7 @@ if __name__ == '__main__':
     vessel_id = 0
     # Checking the arguments
     if len(sys.argv) != 3: # 2 args, the script and the vessel name
-        print("Arguments: vessel_ID number_of_vessels")
+        print("Arguments: vessel_ID number_of_vessels number_of_byzantine")
     else:
         # We need to know the vessel IP
         vessel_id = int(sys.argv[1])
@@ -218,7 +251,7 @@ if __name__ == '__main__':
         voting_template = open('server/vote_frontpage_template.html', 'rb')
 
         # We launch a server
-        server = ByzantineServer(('', PORT_NUMBER), ByzantineRequestHandler, vessel_id, vessel_list)
+        server = ByzantineServer(('', PORT_NUMBER), ByzantineRequestHandler, vessel_id, vessel_list, int(sys.argv[3]))
         print("Starting the server on port %d" % PORT_NUMBER)
 
         try:
