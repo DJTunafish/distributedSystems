@@ -86,13 +86,13 @@ class Lab1():
 	def run(self):
 		"Run the lab 2 simulation environment"
 		# local variables
-		nbOfServersPerRegion = 5
-		nbOfClientsPerRegion = 2
+        nbOfServersPerRegion = 5
+        nbOfClientsPerRegion = 2
         byzantineServers     = 1
 		nbOfRegions = 9
 		localJitter = 10 # ms, the evolution of the time between two consecutive packets
 		# We create the topology
-		topology = Lab4Topology(nbOfServersPerRegion, nbOfClientsPerRegion, nbOfRegions, byzantineServers)
+		topology = Lab4Topology(nbOfServersPerRegion, nbOfClientsPerRegion, nbOfRegions)
 		# We create the simulation
 		# Set the topology, the class for links and interfaces, the mininet environment must be cleaned up before launching, we should build now the topology
 		simulation = Mininet(topo = topology, link = TCLink, intf = TCIntf, cleanup = True, build = True, ipBase='10.1.0.0/24')
@@ -111,7 +111,7 @@ class Lab1():
 		for server in simulation.hosts:
 			if "vessel" in server.name:
 				# We open a xterm and start the server
-				self.startServer(server, nbOfServersPerRegion*nbOfRegions)
+				self.startServer(server, nbOfServersPerRegion*nbOfRegions, byzantineServers)
 		# We also start the Command Line Interface of Mininet
 		CLI(simulation)
 		# Once the CLI is closed (with exit), we can stop the simulation
