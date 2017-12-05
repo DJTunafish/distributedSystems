@@ -240,7 +240,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print(self.server.receivedVotes)
             resultVector = dict(self.server.receivedVotes)
             resultVector['sender'] = self.server.vessel_id
-            self.server.propagate_value_to_vessels("/vote", receivedVotes)
+            self.server.propagate_value_to_vessels("/vote", self.server.receivedVotes)
 
     def compute_round_2(self):
         finalVector = []
