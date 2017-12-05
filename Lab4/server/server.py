@@ -292,12 +292,12 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     #Parse a result vector from a list of strings to a list of boolean values
     #and store the result
     def parse_result_vector(self, vector):
-        if not (vector['sender'] in self.server.receivedResultVectors)
+        if not (int(vector['sender']) in self.server.receivedResultVectors):
             self.set_HTTP_headers(200)
             parsedVector = []
             print("Received vector: ")
             print(vector)
-            for (key, val)) in sorted(vector.iteritems()):
+            for (key, val) in sorted(vector.iteritems()):
                 if(key != 'sender'):
                     parsedVector.append(vote == 'True')
             print("Parsed vector: " )
