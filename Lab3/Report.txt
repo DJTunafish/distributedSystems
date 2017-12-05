@@ -61,8 +61,9 @@ Our implementation of the eventually consistent blackboard
 has a cost of n-1 for every message posted to a server, which is not
 a great improvement over the cost of the centralized blackboard (n+1).
 We can also see in the plot of the time required for complete propagation
-(see TimeComparisonPlot.png) that the actual time until complete synchronization
-occurs has not greatly improved.
+(see ResultPlot.pdf) that the actual time until complete synchronization
+occurs has not greatly improved, though the improvement is noticeable for large
+amounts of nodes.
 What is gained, however, is that there is no longer a single point of failure.
 We still have consistency(eventually, of course) in the system, but are no longer
 dependent on a leader and do not need to run any election protocols.
