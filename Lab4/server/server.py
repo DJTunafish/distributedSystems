@@ -106,12 +106,15 @@ class ByzantineServer(HTTPServer):
                 # Here, we do it only once
                 self.contact_vessel(vessel, path, data)
 
-    #Send first value to first server, second value to second server, etc
+    #Value propagation for a byzantine server. The dataSets parameter should
+    #contain a list of different data to propagate to different servers, as
+    #a byzantine server may send different data to different server.
+    #Sends the first value to the first server, the second value to the second server, etc
     def propagate_byzantine(self, path, dataSets):
         i = 0
         for vessel in self.vessels:
             if vessel != ("10.1.0.%s" % self.vessel_id):
-                self.contact_vessel(vessel, path, data[i])
+                self.contact_vessel(vessel, path, dataSets[i])
                 i += 1
 #------------------------------------------------------------------------------------------------------
 
@@ -149,10 +152,12 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 	# This function contains the logic executed when this server receives a GET request
 	# This function is called AUTOMATICALLY upon reception and is executed as a thread!
     def do_GET(self):
-        if self.path == "/":
+        if self.path == "/": #Get the basic page
             self.wfile.write(voting_template)
             self.set_HTTP_headers(200)
         elif self.path == "/vote/result":
+            #Fetch HTML representing the result
+            #of the latest round of voting
             result = "Local result: " + self.server.result
             if self.server.result == None:
                 result = "No votes performed yet"
@@ -170,20 +175,30 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         data = self.parse_POST_request()
 
         if 'resultVector' in data:
+            #The POST request is from another server that is sending its
+            #result vector
             self.parse_result_vector(data['resultVector'])
 
             if len(self.server.receivedResultVectors) == (len(self.server.vessels) - 1):
+                #Result vectors from all other servers have been received,
+                #compute the final result
                 self.compute_round_2()
         elif 'generalVote' in data:
+            #The POST request is from another server that is sending its vote
             self.receive_vote(data)
 
             if len(self.server.receivedVotes) == len(self.server.vessels):
+                #Votes from all servers have been received, calculate result
+                #and send out result vector to all other servers
                 self.compute_round_1()
         else:
+            #The POST request came from a client instructing the server
+            #to cast its vote
             self.vote()
 
     def compute_round_1(self):
         if self.byzantine:
+            #This server should act in a byzantine manner
             vectors = compute_byzantine_vote_round2(len(self.server.vessels) - self.server.byzantineServers,
                                                     len(self.server.vessels), True)
             #TODO: Something else as tiebreaker?
@@ -196,11 +211,17 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
     def compute_round_2(self):
         finalVector = []
-        for i in range(0, len(self.server.receivedResultVectors)):
+        #Iterate through every index in the resultVectors.
+        #For a given index i, check the entries at that index for every
+        #result vector, counting the amount of votes for retreat and the votes
+        #for attack. If there is a majority of votes for either choice, append
+        #this result to the final result vector. Otherwise, append None to the
+        #final vector, indicating that the result is undecidable.
+        for i in range(0, len(self.server.receivedResultVectors[0])):
             retreatVotes = 0
             attackVotes  = 0
             for vectorEntry in self.server.receivedResultVectors:
-                if vectorEntry:
+                if vectorEntry[i]:
                     attackVotes += 1
                 else:
                     retreatVotes += 1
@@ -214,6 +235,9 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
         attackVotes = 0
         retreatVotes = 0
+        #Iterate through the final result vector to decide the final result.
+        #If there is a majority of attack votes, set the result to this. Otherwise,
+        #default to retreat.
         for vote in finalVector:
             if vote == True:
                 attackVotes += 1
@@ -229,6 +253,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         self.server.receivedResultVectors = []
 
 
+    #Parse a result vector from a list of strings to a list of boolean values
+    #and store the result
     def parse_result_vector(self, vector):
         self.set_HTTP_headers(200)
         parsedVector = []
@@ -236,6 +262,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             parsedVector.append(vote == 'True')
         self.server.receivedResultVectors.append(parsedVector)
 
+    #Vote based on the path used for the request and propagate this decision
+    #to all other servers
     def vote(self):
         if self.path == "/vote/attack":
             self.server.byzantine = False
@@ -262,10 +290,11 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         else:
             self.set_HTTP_headers(500)
 
+    #Receive a vote from another server
     def receive_vote(self, data):
         if self.path == "/vote":
             if int(data['sender'][0]) not in self.server.receivedVotes:
-                self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0] == True
+                self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0] == 'True'
         else:
             self.set_HTTP_headers(500)
 
