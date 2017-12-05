@@ -238,7 +238,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             #    resultVector.append(val)
             print("Result vector:")
             print(self.server.receivedVotes)
-            resultVector = dict(receivedVotes)
+            resultVector = dict(self.server.receivedVotes)
             resultVector['sender'] = self.server.vessel_id
             self.server.propagate_value_to_vessels("/vote", receivedVotes)
 
