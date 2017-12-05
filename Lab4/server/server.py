@@ -16,7 +16,7 @@ from urllib import urlencode # Encode POST content into the HTTP header
 from codecs import open # Open a file
 from threading import  Thread # Thread Management
 from sets import Set
-import byzantine_behavior
+from byzantine_behavior import compute_byzantine_vote_round1, compute_byzantine_vote_round2
 import functools
 #------------------------------------------------------------------------------------------------------
 
@@ -50,9 +50,10 @@ class ByzantineServer(HTTPServer):
         #Votes received from other nodes this round
         self.receivedVotes = {}
         #Result vectors received this round
-        self.receivedResultVectors = []
+        self.receivedResultVectors = {}
         #Result of latest voting round
         self.result = None
+        self.byzantine = False
 #------------------------------------------------------------------------------------------------------
     # Contact a specific vessel with a set of variables to transmit to it, via
     # an HTTP POST request
@@ -104,7 +105,9 @@ class ByzantineServer(HTTPServer):
             if vessel != ("10.1.0.%s" % self.vessel_id):
                 # A good practice would be to try again if the request failed
                 # Here, we do it only once
-                self.contact_vessel(vessel, path, data)
+                thread = Thread(target=self.contact_vessel,args=(vessel, path, data))
+                thread.daemon = True
+                thread.start()
 
     #Value propagation for a byzantine server. The dataSets parameter should
     #contain a list of different data to propagate to different servers, as
@@ -112,9 +115,12 @@ class ByzantineServer(HTTPServer):
     #Sends the first value to the first server, the second value to the second server, etc
     def propagate_byzantine(self, path, dataSets):
         i = 0
+        print(self.vessels)
         for vessel in self.vessels:
             if vessel != ("10.1.0.%s" % self.vessel_id):
-                self.contact_vessel(vessel, path, dataSets[i])
+                thread = Thread(target=self.contact_vessel,args=(vessel, path, dataSets[i]))
+                thread.daemon = True
+                thread.start()
                 i += 1
 #------------------------------------------------------------------------------------------------------
 
@@ -158,9 +164,10 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         elif self.path == "/vote/result":
             #Fetch HTML representing the result
             #of the latest round of voting
-            result = "Local result: " + self.server.result
             if self.server.result == None:
                 result = "No votes performed yet"
+            else:
+                result = "Local result: " + self.server.result
 
             html = vote_result_template % ("")
 
@@ -175,6 +182,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         data = self.parse_POST_request()
 
         if 'resultVector' in data:
+            print("Result vector received")
+            print(data)
             #The POST request is from another server that is sending its
             #result vector
             self.parse_result_vector(data['resultVector'])
@@ -184,6 +193,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 #compute the final result
                 self.compute_round_2()
         elif 'generalVote' in data:
+            print("Vote received")
+            print(data)
             #The POST request is from another server that is sending its vote
             self.receive_vote(data)
 
@@ -192,22 +203,44 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 #and send out result vector to all other servers
                 self.compute_round_1()
         else:
+            print("Casting vote")
             #The POST request came from a client instructing the server
             #to cast its vote
             self.vote()
 
+            if len(self.server.receivedVotes) == len(self.server.vessels):
+                #Votes from all servers have been received, calculate result
+                #and send out result vector to all other servers
+                self.compute_round_1()
+
+
     def compute_round_1(self):
-        if self.byzantine:
+        print("Compute round 1 result")
+        if self.server.byzantine:
             #This server should act in a byzantine manner
             vectors = compute_byzantine_vote_round2(len(self.server.vessels) - self.server.byzantineServers,
                                                     len(self.server.vessels), True)
+
+            dicts = []
+            for vect in vectors:
+                dictX = {}
+                for i in range(1, len(self.server.vessels + 1)):
+                    dictX[i] = vect[i - 1]
+                dictX['sender'] = self.server.vessel_id
+                dicts.append(dictX)
             #TODO: Something else as tiebreaker?
-            self.server.propagate_byzantine("/vote", vectors)
+            self.server.propagate_byzantine("/vote", dicts)
         else:
-            resultVector = []
-            for (key, val) in sorted(self.server.receivedVotes):
-                resultVector.append(val)
-            self.server.propagate_value_to_vessels("/vote", {'resultVector' : resultVector})
+            #resultVector = []
+            #print("Received votes:")
+            #print(self.server.receivedVotes)
+            #for (key, val) in sorted(self.server.receivedVotes.iteritems()):
+            #    resultVector.append(val)
+            print("Result vector:")
+            print(self.server.receivedVotes)
+            resultVector = dict(receivedVotes)
+            resultVector['sender'] = self.server.vessel_id
+            self.server.propagate_value_to_vessels("/vote", receivedVotes)
 
     def compute_round_2(self):
         finalVector = []
@@ -217,10 +250,11 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         #for attack. If there is a majority of votes for either choice, append
         #this result to the final result vector. Otherwise, append None to the
         #final vector, indicating that the result is undecidable.
+        print("Compute round 2 result")
         for i in range(0, len(self.server.receivedResultVectors[0])):
             retreatVotes = 0
             attackVotes  = 0
-            for vectorEntry in self.server.receivedResultVectors:
+            for (vessel, vectorEntry) in self.server.receivedResultVectors.iteritems():
                 if vectorEntry[i]:
                     attackVotes += 1
                 else:
@@ -246,8 +280,10 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
         if attackVotes > retreatVotes:
             self.server.result = 'Attack!'
+            print("CHAAAARGE!")
         else:
             self.server.result = 'Retreat!'
+            print("RUN AWAY!")
 
         self.server.receivedVotes = {}
         self.server.receivedResultVectors = []
@@ -256,28 +292,38 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     #Parse a result vector from a list of strings to a list of boolean values
     #and store the result
     def parse_result_vector(self, vector):
-        self.set_HTTP_headers(200)
-        parsedVector = []
-        for vote in vector:
-            parsedVector.append(vote == 'True')
-        self.server.receivedResultVectors.append(parsedVector)
+        if not (vector['sender'] in self.server.receivedResultVectors)
+            self.set_HTTP_headers(200)
+            parsedVector = []
+            print("Received vector: ")
+            print(vector)
+            for (key, val)) in sorted(vector.iteritems()):
+                if(key != 'sender'):
+                    parsedVector.append(vote == 'True')
+            print("Parsed vector: " )
+            print(parsedVector)
+            self.server.receivedResultVectors[int(vector['sender'][0])](parsedVector)
 
     #Vote based on the path used for the request and propagate this decision
     #to all other servers
     def vote(self):
         if self.path == "/vote/attack":
             self.server.byzantine = False
+            print("Voting attack")
             self.server.propagate_value_to_vessels('/vote', {'generalVote' : True,
                                                              'sender'      : self.server.vessel_id})
-            self.server.receivedVotes[self.server.vessel_id] = False
+            self.server.receivedVotes[self.server.vessel_id] = 'True'
+
         elif self.path == "/vote/retreat":
+            print("Voting retreat")
             self.server.byzantine = False
             self.server.propagate_value_to_vessels('/vote', {'generalVote' : False,
                                                              'sender' : self.server.vessel_id})
-            self.server.receivedVotes[self.server.vessel_id] = True
+            self.server.receivedVotes[self.server.vessel_id] = 'False'
         elif self.path == "/vote/byzantine":
+            print("Voting byzantine")
             self.server.byzantine = True
-            votes = compute_byzantine_vote_round1(len(self.server.vessels) - self.sever.byzantineServers,
+            votes = compute_byzantine_vote_round1(len(self.server.vessels) - self.server.byzantineServers,
                                                   len(self.server.vessels), True)
             #TODO: Set tie-breaker to something fancy?
             propData = []
@@ -293,8 +339,9 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     #Receive a vote from another server
     def receive_vote(self, data):
         if self.path == "/vote":
+            self.set_HTTP_headers(200)
             if int(data['sender'][0]) not in self.server.receivedVotes:
-                self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0] == 'True'
+                self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0]
         else:
             self.set_HTTP_headers(500)
 
