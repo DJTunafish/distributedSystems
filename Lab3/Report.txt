@@ -62,8 +62,10 @@ has a cost of n-1 for every message posted to a server, which is not
 a great improvement over the cost of the centralized blackboard (n+1).
 We can also see in the plot of the time required for complete propagation
 (see ResultPlot.pdf) that the actual time until complete synchronization
-occurs has not greatly improved, though the improvement is noticeable for large
-amounts of nodes.
+occurs has not greatly improved. It was in fact unchanged for up to 24 nodes.
+When we increased the number of nodes to 48 and 72, the differences became
+noticable.
+
 What is gained, however, is that there is no longer a single point of failure.
 We still have consistency(eventually, of course) in the system, but are no longer
 dependent on a leader and do not need to run any election protocols.
