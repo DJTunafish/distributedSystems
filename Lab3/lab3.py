@@ -84,7 +84,7 @@ class Lab1():
 	# run(self)
 	# Run the lab 1
 	def run(self):
-		"Run the lab 2 simulation environment"
+		"Run the lab 3 simulation environment"
 		# local variables
 		nbOfServersPerRegion = 2
 		nbOfClientsPerRegion = 2

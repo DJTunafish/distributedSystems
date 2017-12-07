@@ -1,12 +1,12 @@
 #!/bin/bash
-if [ $# -ne 2 ]
-then
+if [ $# -ne 2 ]; then
 	echo "Need 2 arguments - 1. number of servers 2. number of requests per server"
 	exit 1
 fi
 
 no_servers=$1
 no_requests=$2
+
 echo "Sending requests ..."
 for i in `seq 1 ${no_requests}`; do
 	echo "Sending request no. ${i}"

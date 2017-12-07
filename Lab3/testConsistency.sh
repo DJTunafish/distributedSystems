@@ -1,15 +1,13 @@
 #!/bin/bash
-for i in `seq 1 20`; do
-	RANDOMNR="$(( ( RANDOM % 10 )  + 1 ))"
-	IPPREFIX="10.1.0."
-	IPSUFFIX="/entries"
-	RANDOMIP=${IPPREFIX}${RANDOMNR}${IPSUFFIX}
-	curl -s --data 'entry=test'${i} -X POST ${RANDOMIP}
-done
+if [ $# -ne 1 ]; then
+	echo "Need 1 argument - number of servers"
+	exit 1
+fi
 
-sleep 2
+no_servers=$(($1-1))
+test_fail=false
 
-for i in `seq 1 9`; do
+for i in `seq 1 ${no_servers}`; do
 	j=$((i+1))
 	IPPREFIX="10.1.0."
 	IPSUFFIX="/entries/raw"
@@ -17,9 +15,12 @@ for i in `seq 1 9`; do
 	SNDIP=${IPPREFIX}${j}${IPSUFFIX}
 	FSTRES=$(curl -s -X GET ${FSTIP})
 	SNDRES=$(curl -s -X GET ${SNDIP})
-	if [ "$FSTRES" == "$SNDRES" ]; then
-		 echo "Vessel $i and vessel $j are consistent"
-	else
+	if [ "$FSTRES" != "$SNDRES" ]; then
 		echo "Vessel $i and vessel $j are not consistent"
+		test_fail=true
 	fi
 done
+
+if [ "$test_fail" = false ]; then
+	echo "All vessels are consistent"
+fi
