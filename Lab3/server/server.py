@@ -18,8 +18,6 @@ from threading import  Thread # Thread Management
 from sets import Set
 import time
 
-# Used to compare
-import functools
 #------------------------------------------------------------------------------------------------------
 
 # Global variables for HTML templates
@@ -325,7 +323,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #and compare it to the local clock. Select the greater of the two,
         #set the local clock to this value and then increment the clock by 1.
         #If the post request came from a client, increment the logical clock by 1.
-        if('clock' in data and int(data['clock'][0] > self.server.logical_clock)):
+        if('clock' in data and int(data['clock'][0]) > self.server.logical_clock):
             self.server.logical_clock = int(data['clock'][0]) + 1
         else:
             self.server.logical_clock += 1
@@ -398,7 +396,7 @@ class BlackboardRequestHandler(BaseHTTPRequestHandler):
         #Print information regarding the amount of time that has passed since
         #the first request was received
         self.server.t_total = time.time()
-        print("Diff:" + str(self.server.t_total - self.server.t_0))
+        #print("Diff:" + str(self.server.t_total - self.server.t_0))
 
         # If the retransmit flag is set, call the propagation function, but only
         # if the propagate flag is not set in the received data. This latter flag

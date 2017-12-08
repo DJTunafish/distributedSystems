@@ -15,7 +15,7 @@ for i in `seq 1 ${no_requests}`; do
 		IPPREFIX="10.1.0."
 		IPSUFFIX="/entries"
 		IP=${IPPREFIX}${SERVER}${IPSUFFIX}
-		curl -s --data 'entry=test'${i} -X POST ${IP}
+		curl -s --data 'entry=test-server'${j}'-req'${i} -X POST ${IP}
 	done
 done
 echo "Done."
