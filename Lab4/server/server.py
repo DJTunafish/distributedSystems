@@ -173,6 +173,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
             self.wfile.write(html)
         else:
+            print("Unrecognized get request")
             self.set_HTTP_headers(500)
 
 #------------------------------------------------------------------------------------------------------
@@ -181,12 +182,12 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         data = self.parse_POST_request()
 
-        if 'resultVector' in data:
+        if self.path == "/voteRound2":
             print("Result vector received")
             print(data)
             #The POST request is from another server that is sending its
             #result vector
-            self.parse_result_vector(data['resultVector'])
+            self.parse_result_vector(data)
 
             if len(self.server.receivedResultVectors) == (len(self.server.vessels) - 1):
                 #Result vectors from all other servers have been received,
@@ -229,7 +230,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 dictX['sender'] = self.server.vessel_id
                 dicts.append(dictX)
             #TODO: Something else as tiebreaker?
-            self.server.propagate_byzantine("/vote", dicts)
+            self.server.propagate_byzantine("/voteRound2", dicts)
         else:
             #resultVector = []
             #print("Received votes:")
@@ -240,7 +241,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print(self.server.receivedVotes)
             resultVector = dict(self.server.receivedVotes)
             resultVector['sender'] = self.server.vessel_id
-            self.server.propagate_value_to_vessels("/vote", self.server.receivedVotes)
+            self.server.propagate_value_to_vessels("/voteRound2", resultVector)
 
     def compute_round_2(self):
         finalVector = []
@@ -251,7 +252,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         #this result to the final result vector. Otherwise, append None to the
         #final vector, indicating that the result is undecidable.
         print("Compute round 2 result")
-        for i in range(0, len(self.server.receivedResultVectors[0])):
+        for i in range(0, len(self.server.vessels)):
             retreatVotes = 0
             attackVotes  = 0
             for (vessel, vectorEntry) in self.server.receivedResultVectors.iteritems():
@@ -286,23 +287,23 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print("RUN AWAY!")
 
         self.server.receivedVotes = {}
-        self.server.receivedResultVectors = []
+        self.server.receivedResultVectors = {}
 
 
     #Parse a result vector from a list of strings to a list of boolean values
     #and store the result
     def parse_result_vector(self, vector):
-        if not (int(vector['sender']) in self.server.receivedResultVectors):
+        if not (int(vector['sender'][0]) in self.server.receivedResultVectors):
             self.set_HTTP_headers(200)
             parsedVector = []
             print("Received vector: ")
             print(vector)
             for (key, val) in sorted(vector.iteritems()):
                 if(key != 'sender'):
-                    parsedVector.append(vote == 'True')
+                    parsedVector.append(val == 'True')
             print("Parsed vector: " )
             print(parsedVector)
-            self.server.receivedResultVectors[int(vector['sender'][0])](parsedVector)
+            self.server.receivedResultVectors[int(vector['sender'][0])] = parsedVector
 
     #Vote based on the path used for the request and propagate this decision
     #to all other servers
@@ -334,6 +335,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
             self.server.propagate_byzantine('/vote', propData)
         else:
+            print("Non-acceptable URL for client vote")
             self.set_HTTP_headers(500)
 
     #Receive a vote from another server
@@ -343,6 +345,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             if int(data['sender'][0]) not in self.server.receivedVotes:
                 self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0]
         else:
+            print("Vote sent to incorrect URL")
             self.set_HTTP_headers(500)
 
 #------------------------------------------------------------------------------------------------------
