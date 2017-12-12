@@ -342,6 +342,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                      'sender'      : self.server.vessel_id}
                 propData.append(d)
 
+            self.server.receivedVotes[self.server.vessel_id] = 'Byzantine'
             self.server.propagate_byzantine('/vote', propData)
         else:
             print("Non-acceptable URL for client vote")
