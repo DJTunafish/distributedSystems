@@ -234,7 +234,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             dicts = []
             for vect in vectors:
                 dictX = {}
-                for i in range(1, len(self.server.vessels + 1)):
+                for i in range(1, len(self.server.vessels) + 1):
                     dictX[i] = vect[i - 1]
                 dictX['sender'] = self.server.vessel_id
                 dicts.append(dictX)
