@@ -207,6 +207,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             #The POST request is from another server that is sending its vote
             self.receive_vote(data)
 
+            print(len(self.server.receivedVotes))
             if len(self.server.receivedVotes) == len(self.server.vessels):
                 #Votes from all servers have been received, calculate result
                 #and send out result vector to all other servers
@@ -308,7 +309,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print(vector)
             for (key, val) in sorted(vector.iteritems()):
                 if(key != 'sender'):
-                    parsedVector.append(val == 'True')
+                    parsedVector.append(val[0] == 'True')
             print("Parsed vector: " )
             print(parsedVector)
             self.server.receivedResultVectors[int(vector['sender'][0])] = parsedVector
@@ -349,8 +350,10 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     #Receive a vote from another server
     def receive_vote(self, data):
         if self.path == "/vote":
+            print("Receive vote")
             self.set_HTTP_headers(200)
             if int(data['sender'][0]) not in self.server.receivedVotes:
+                print("Add received vote to store")
                 self.server.receivedVotes[int(data['sender'][0])] = data['generalVote'][0]
         else:
             print("Vote sent to incorrect URL")
