@@ -164,12 +164,20 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         elif self.path == "/vote/result":
             #Fetch HTML representing the result
             #of the latest round of voting
-            if self.server.result == None:
-                result = "No votes performed yet"
-            else:
-                result = "Local result: " + self.server.result
 
-            html = vote_result_template % ("")
+            result = ""
+            if self.server.result == None:
+                result = "None"
+            else:
+                result = self.server.result
+
+            vote = ""
+            if self.server.vessel_id in self.server.receivedVotes:
+                vote = self.server.receivedVotes[self.server.vessel_id]
+            else:
+                vote = "No vote cast"
+
+            html = vote_result_template % (result, vote)
 
             self.wfile.write(html)
         else:
