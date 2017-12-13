@@ -278,7 +278,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 retreatVotes = 0
                 attackVotes  = 0
 
-                for (vessel, vector) in self.server.receivedResultVectors.interitems():
+                for (vessel, vector) in self.server.receivedResultVectors.iteritems():
                     vectorEntry = vector[i]
                     if vessel != (i + 1) and vectorEntry:
                         attackVotes += 1
