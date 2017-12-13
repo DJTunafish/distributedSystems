@@ -281,7 +281,11 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print("Compute value " + str(i))
             if i == self.server.vessel_id:
                 print("Appending own value")
-                finalVector.append(self.server.receivedVotes[self.server.vessel_id])
+                finalVector.append(self.server.receivedVotes[self.server.vessel_id] == 'True')
+                if(self.server.receivedVotes[self.server.vessel_id] == 'True'):
+                    finalAttackVotes += 1
+                else:
+                    finalRetreatVotes += 1
             else:
                 retreatVotes = 0
                 attackVotes  = 0
