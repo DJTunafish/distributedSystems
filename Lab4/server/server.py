@@ -260,7 +260,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             resultVectorList = []
             for (key, val) in sorted(resultVector.iteritems()):
                 if(key != 'sender'):
-                    parsedVectorList.append(val)
+                    resultVectorList.append(val)
 
             self.server.receivedResultVectors[self.server.vessel_id] = resultVectorList
             self.server.propagate_value_to_vessels("/voteRound2", resultVector)
