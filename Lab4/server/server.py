@@ -279,7 +279,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 attackVotes  = 0
 
                 for (vessel, vector) in self.server.receivedResultVectors.iteritems():
-                    vectorEntry = vector[i]
+                    vectorEntry = vector[i-1]
                     if vessel != i and vectorEntry:
                         attackVotes += 1
                     elif vessel != i:
