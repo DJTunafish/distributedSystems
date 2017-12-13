@@ -256,7 +256,13 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print(self.server.receivedVotes)
             resultVector = dict(self.server.receivedVotes)
             resultVector['sender'] = self.server.vessel_id
-            self.server.receivedResultVectors[self.server.vessel_id] = resultVector
+
+            resultVectorList = []
+            for (key, val) in sorted(resultVector.iteritems()):
+                if(key != 'sender'):
+                    parsedVectorList.append(val)
+
+            self.server.receivedResultVectors[self.server.vessel_id] = resultVectorList
             self.server.propagate_value_to_vessels("/voteRound2", resultVector)
 
     def compute_round_2(self):
