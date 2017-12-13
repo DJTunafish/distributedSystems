@@ -278,7 +278,9 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         finalRetreatVotes = 0
 
         for i in range(1, len(self.server.vessels) + 1):
+            print("Compute value " + str(i))
             if i == self.server.vessel_id:
+                print("Appending own value")
                 finalVector.append(self.server.receivedVotes[self.server.vessel_id])
             else:
                 retreatVotes = 0
@@ -290,6 +292,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                         attackVotes += 1
                     elif vessel != i:
                         retreatVotes += 1
+                    else:
+                        print("For value " + str(i) + ", skipped vote of " + str(vessel))
 
                 if attackVotes > retreatVotes:
                     finalVector.append(True)
@@ -299,6 +303,10 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                     finalRetreatVotes += 1
                 else:
                     finalVector.append(None)
+
+        print("Final vector: " + str(finalVector))
+        print("Final attack votes: " + str(finalAttackVotes) )
+        print("Final retreat votes: " + str(finalRetreatVotes) )
 
         self.server.finalResultVector = finalVector
         if finalAttackVotes > finalRetreatVotes:
