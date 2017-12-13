@@ -164,7 +164,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         elif self.path == "/vote/result":
             #Fetch HTML representing the result
             #of the latest round of voting
-
+#TODO: Show result vector here
             result = ""
             if self.server.result == None:
                 result = "None"
@@ -197,7 +197,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             #result vector
             self.parse_result_vector(data)
 
-            if len(self.server.receivedResultVectors) == (len(self.server.vessels) - 1):
+            if len(self.server.receivedResultVectors) == (len(self.server.vessels)):
                 #Result vectors from all other servers have been received,
                 #compute the final result
                 self.compute_round_2()
@@ -212,6 +212,11 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 #Votes from all servers have been received, calculate result
                 #and send out result vector to all other servers
                 self.compute_round_1()
+
+                if len(self.server.receivedResultVectors) == (len(self.server.vessels)):
+                    #Result vectors from all other servers have been received,
+                    #compute the final result
+                    self.compute_round_2()
         else:
             print("Casting vote")
             #The POST request came from a client instructing the server
@@ -239,6 +244,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 dictX['sender'] = self.server.vessel_id
                 dicts.append(dictX)
             #TODO: Something else as tiebreaker?
+            self.server.receivedResultVectors[self.server.vessel_id] = dicts[0]
             self.server.propagate_byzantine("/voteRound2", dicts)
         else:
             #resultVector = []
@@ -250,6 +256,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print(self.server.receivedVotes)
             resultVector = dict(self.server.receivedVotes)
             resultVector['sender'] = self.server.vessel_id
+            self.server.receivedResultVectors[self.server.vessel_id] = resultVector
             self.server.propagate_value_to_vessels("/voteRound2", resultVector)
 
     def compute_round_2(self):
@@ -261,34 +268,34 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         #this result to the final result vector. Otherwise, append None to the
         #final vector, indicating that the result is undecidable.
         print("Compute round 2 result")
+        finalAttackVotes = 0
+        finalRetreatVotes = 0
+
         for i in range(0, len(self.server.vessels)):
-            retreatVotes = 0
-            attackVotes  = 0
-            for (vessel, vectorEntry) in self.server.receivedResultVectors.iteritems():
-                if vectorEntry[i]:
-                    attackVotes += 1
-                else:
-                    retreatVotes += 1
-            #TODO: Not sure about below logic, check slides
-            if attackVotes > retreatVotes:
-                finalVector.append(True)
-            elif retreatVotes > attackVotes:
-                finalVector.append(False)
+            if i + 1 == self.server.vessel_id:
+                finalVector.append(self.server.receivedVotes[self.server.vessel_id])
             else:
-                finalVector.append(None)
+                retreatVotes = 0
+                attackVotes  = 0
 
-        attackVotes = 0
-        retreatVotes = 0
-        #Iterate through the final result vector to decide the final result.
-        #If there is a majority of attack votes, set the result to this. Otherwise,
-        #default to retreat.
-        for vote in finalVector:
-            if vote == True:
-                attackVotes += 1
-            elif vote == False:
-                retreatVotes += 1
+                for (vessel, vector) in self.server.receivedResultVectors.interitems():
+                    vectorEntry = vector[i]
+                    if vessel != (i + 1) and vectorEntry:
+                        attackVotes += 1
+                    elif vessel != (i + 1):
+                        retreatVotes += 1
 
-        if attackVotes > retreatVotes:
+                if attackVotes > retreatVotes:
+                    finalVector.append(True)
+                    finalAttackVotes += 1
+                elif retreatVotes > attackVotes:
+                    finalVector.append(False)
+                    finalRetreatVotes += 1
+                else:
+                    finalVector.append(None)
+
+        self.server.finalResultVector = finalVector
+        if finalAttackVotes > finalRetreatVotes:
             self.server.result = 'Attack!'
             print("CHAAAARGE!")
         else:
