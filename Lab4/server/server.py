@@ -164,12 +164,23 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         elif self.path == "/vote/result":
             #Fetch HTML representing the result
             #of the latest round of voting
-#TODO: Show result vector here
             result = ""
+            resultVector = ""
+
             if self.server.result == None:
                 result = "None"
+                resultVector = "Voting not yet complete"
             else:
                 result = self.server.result
+                resultVector = []
+
+                for v in self.server.finalResultVector:
+                    if v == None:
+                        resultVector.append("Unknown")
+                    elif v:
+                        resultVector.append("Attack")
+                    else:
+                        resultvector.append("Retreat")
 
             vote = ""
             if self.server.vessel_id in self.server.receivedVotes:
@@ -177,7 +188,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             else:
                 vote = "No vote cast"
 
-            html = vote_result_template % (result, vote)
+            html = vote_result_template % (result, vote, str(resultVector))
 
             self.wfile.write(html)
         else:
@@ -247,11 +258,6 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             self.server.receivedResultVectors[self.server.vessel_id] = dicts[0]
             self.server.propagate_byzantine("/voteRound2", dicts)
         else:
-            #resultVector = []
-            #print("Received votes:")
-            #print(self.server.receivedVotes)
-            #for (key, val) in sorted(self.server.receivedVotes.iteritems()):
-            #    resultVector.append(val)
             print("Result vector:")
             print(self.server.receivedVotes)
             resultVector = dict(self.server.receivedVotes)
@@ -268,19 +274,22 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     def compute_round_2(self):
         finalVector = []
         #Iterate through every index in the resultVectors.
-        #For a given index i, check the entries at that index for every
+        #For a given index i,starting at 1, check the entries at that index for every
         #result vector, counting the amount of votes for retreat and the votes
-        #for attack. If there is a majority of votes for either choice, append
+        #for attack. For index i, we do not count the vote in the result vector
+        #of node i. If there is a majority of votes for either choice, append
         #this result to the final result vector. Otherwise, append None to the
         #final vector, indicating that the result is undecidable.
+        #Further, if index i represents the vote of this node, no voting is perform
+        #and instead the vote of this node is appended to the final vector.
         print("Compute round 2 result")
         finalAttackVotes = 0
         finalRetreatVotes = 0
 
         for i in range(1, len(self.server.vessels) + 1):
-            print("Compute value " + str(i))
             if i == self.server.vessel_id:
-                print("Appending own value")
+                #Perform no voting to determine vote of local node, instead
+                #record immediately in final vector
                 finalVector.append(self.server.receivedVotes[self.server.vessel_id] == 'True')
                 if(self.server.receivedVotes[self.server.vessel_id] == 'True'):
                     finalAttackVotes += 1
@@ -296,8 +305,6 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                         attackVotes += 1
                     elif vessel != i:
                         retreatVotes += 1
-                    else:
-                        print("For value " + str(i) + ", skipped vote of " + str(vessel))
 
                 if attackVotes > retreatVotes:
                     finalVector.append(True)
@@ -307,10 +314,6 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                     finalRetreatVotes += 1
                 else:
                     finalVector.append(None)
-
-        print("Final vector: " + str(finalVector))
-        print("Final attack votes: " + str(finalAttackVotes) )
-        print("Final retreat votes: " + str(finalRetreatVotes) )
 
         self.server.finalResultVector = finalVector
         if finalAttackVotes > finalRetreatVotes:
