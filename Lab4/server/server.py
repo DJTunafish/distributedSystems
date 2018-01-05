@@ -164,6 +164,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         elif self.path == "/vote/result":
             #Fetch HTML representing the result
             #of the latest round of voting
+            self.set_HTTP_headers(200)
+
             result = ""
             resultVector = ""
 
