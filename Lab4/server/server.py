@@ -54,6 +54,7 @@ class ByzantineServer(HTTPServer):
         #Result of latest voting round
         self.result = None
         self.byzantine = False
+        self.prev_round_vote = None
 #------------------------------------------------------------------------------------------------------
     # Contact a specific vessel with a set of variables to transmit to it, via
     # an HTTP POST request
@@ -186,8 +187,13 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
             vote = ""
             if self.server.vessel_id in self.server.receivedVotes:
-                if self.server.receivedVotes[self.server.vessel_id]:
-                    vote = 'Attack!'
+                if self.server.receivedVotes[self.server.vessel_id] == 'True':
+                    vote = 'GERONIMO!!!'
+                else:
+                    vote = 'Retreat!'
+            elif self.server.prev_round_vote != None:
+                if self.server.prev_round_vote == 'True':
+                    vote = 'GERONIMO!!!'
                 else:
                     vote = 'Retreat!'
             else:
@@ -321,11 +327,12 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         self.server.finalResultVector = finalVector
         if finalAttackVotes >= finalRetreatVotes:
             self.server.result = 'Attack!'
-            print("CHAAAARGE!")
+            print("GERONIMOOOOOOOOO!!!!!")
         else:
             self.server.result = 'Retreat!'
             print("RUN AWAY!")
 
+        self.server.prev_round_vote = self.server.receivedVotes[self.server.vessel_id]
         self.server.receivedVotes = {}
         self.server.receivedResultVectors = {}
 
@@ -333,8 +340,9 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
     #Parse a result vector from a list of strings to a list of boolean values
     #and store the result
     def parse_result_vector(self, vector):
+        self.set_HTTP_headers(200)
+
         if not (int(vector['sender'][0]) in self.server.receivedResultVectors):
-            self.set_HTTP_headers(200)
             parsedVector = []
             print("Received vector: ")
             print(vector)
@@ -345,10 +353,12 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             print(parsedVector)
             self.server.receivedResultVectors[int(vector['sender'][0])] = parsedVector
 
+
     #Vote based on the path used for the request and propagate this decision
     #to all other servers
     def vote(self):
         if self.path == "/vote/attack":
+            self.set_HTTP_headers(200)
             self.server.byzantine = False
             print("Voting attack")
             self.server.propagate_value_to_vessels('/vote', {'generalVote' : True,
@@ -357,12 +367,14 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/vote/retreat":
             print("Voting retreat")
+            self.set_HTTP_headers(200)
             self.server.byzantine = False
             self.server.propagate_value_to_vessels('/vote', {'generalVote' : False,
                                                              'sender' : self.server.vessel_id})
             self.server.receivedVotes[self.server.vessel_id] = 'False'
         elif self.path == "/vote/byzantine":
             print("Voting byzantine")
+            self.set_HTTP_headers(200)
             self.server.byzantine = True
             votes = compute_byzantine_vote_round1(len(self.server.vessels) - self.server.byzantineServers,
                                                   len(self.server.vessels), True)
@@ -377,7 +389,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             self.server.propagate_byzantine('/vote', propData)
         else:
             print("Non-acceptable URL for client vote")
-            self.set_HTTP_headers(500)
+            self.set_HTTP_headers(500)+
 
     #Receive a vote from another server
     def receive_vote(self, data):
