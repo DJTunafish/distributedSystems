@@ -180,7 +180,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                     elif v:
                         resultVector.append("Attack")
                     else:
-                        resultvector.append("Retreat")
+                        resultVector.append("Retreat")
 
             vote = ""
             if self.server.vessel_id in self.server.receivedVotes:
