@@ -1,0 +1,47 @@
+-----------------------------------------------------
+ALGORITHM DESCRIPTION
+-----------------------------------------------------
+
+i)  Round 1
+
+    In round 1, each general sends their vote to each other, with any traitors
+    sending arbitrary votes to each general.
+    Once a general has received votes from every other general and has placed
+    its own vote, it collects all received votes into a vector and sends this
+    vector to all other generals
+
+ii) Round 2
+
+    Once a general has received all result vectors, it begins to compute the
+    final result vector. To determine the vote of general i in the final result
+    vector, the general consults all result vectors(including its own), except
+    for the result vector of general i. Essentially, the general performs a
+    majority vote on what general i voted for, but excludes general i from the
+    vote to prevent them from "changing their mind"
+
+
+-----------------------------------------------------
+TASK 1A
+-----------------------------------------------------
+
+G1:             G2:                 G3:                 G4:
+             G1:[A, B,  C,  D]   G1:[E, F,  G,  H]   G1:[I, J,  K,  H]
+Byzantine    G2:[X, G2, G3, G4]  G2:[X, G2, G3, G4]  G2:[X, G2, G3, G4]
+             G3:[Y, G2, G3, G4]  G3:[Y, G2, G3, G4]  G3:[Y, G2, G3, G4]
+             G4:[Z, G2, G3, G4]  G4:[Z, G2, G3, G4]  G4:[Z, G2, G3, G4]
+             F:[G1, G2, G3, G4]  F:[G1, G2, G3, G4]  G4:[G1, G2, G3, G4]
+
+G1 WILL BE THE SAME ON ALL NODES BECAUSE IT WILL BE CALCULATED USING THE SAME
+VOTES: PUT THIS IN FANCY TERMS
+-----------------------------------------------------
+TASK 1B
+-----------------------------------------------------
+
+G1:             G2:                 G3:                 G4:
+             G1:[A, B,  C]   G1:[D, E,  F]   G1:[G, H,  I]
+Byzantine    G2:[X, G2, G3]  G2:[X, G2, G3]  G2:[X, G2, G3]
+             G3:[Y, G2, G3]  G3:[Y, G2, G3]  G3:[Y, G2, G3]
+             F:[U, U, U]     F:[U, U, U]     F:[U, U, U]
+
+All values can become w/e because the traitor has the power to swing votes: put
+this in fancy terms
