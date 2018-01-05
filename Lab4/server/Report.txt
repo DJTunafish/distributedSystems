@@ -24,24 +24,48 @@ ii) Round 2
 TASK 1A
 -----------------------------------------------------
 
-G1:             G2:                 G3:                 G4:
-             G1:[A, B,  C,  D]   G1:[E, F,  G,  H]   G1:[I, J,  K,  H]
-Byzantine    G2:[X, G2, G3, G4]  G2:[X, G2, G3, G4]  G2:[X, G2, G3, G4]
-             G3:[Y, G2, G3, G4]  G3:[Y, G2, G3, G4]  G3:[Y, G2, G3, G4]
-             G4:[Z, G2, G3, G4]  G4:[Z, G2, G3, G4]  G4:[Z, G2, G3, G4]
-             F:[G1, G2, G3, G4]  F:[G1, G2, G3, G4]  G4:[G1, G2, G3, G4]
+We will argue for the correctness of our algorithm in the scenario by showing
+that the final result vectors will be identical on each honest general. Below
+follows the result vectors received by all generals. Gi denotes a vector sent
+from general i and F denotes the final result vector of a general. Within the
+vectors, Gi will represent a specific vote from general i, while a single uppercase
+letter will represent a variable that could potentially hold any value.
 
-G1 WILL BE THE SAME ON ALL NODES BECAUSE IT WILL BE CALCULATED USING THE SAME
-VOTES: PUT THIS IN FANCY TERMS
+G1:             G2:                  G3:                   G4:
+             G1:[A, B,  C,  D]    G1:[E, F,  G,  H]     G1:[I, J,  K,  H]
+Byzantine    G2:[X, G2, G3, G4]   G2:[X, G2, G3, G4]    G2:[X, G2, G3, G4]
+             G3:[Y, G2, G3, G4]   G3:[Y, G2, G3, G4]    G3:[Y, G2, G3, G4]
+             G4:[Z, G2, G3, G4]   G4:[Z, G2, G3, G4]    G4:[Z, G2, G3, G4]
+             F:[XYZ, G2, G3, G4]  F:[XYZ, G2, G3, G4]   F:[XYZ, G2, G3, G4]
+
+The first thing to note is that all honest generals agree on a common value for
+F[1]: the value XYZ, the result of applying a majority vote to the different values
+that G1 sent to all the honest generals. On every node, we know that F[1] will
+be computed using the same values(what G1 told G2, G3 and G4 that it voted) as
+we know that G2, G3 and G4 are honest. As such, we know that F[1] has the same
+value for all generals.
+
+We also know that F[2], F[3] and F[4] will have the same values for all generals.
+For example, when computing F[2] on G2, the values B, G2 and G2 will be used.
+Regardless of the value of B, G2 has the clear majority and as such F[2] = G2.
+This same scenario will occur for the computation of all other indices of F for
+all generals.
+
+As we know that all generals will compute the same final result vectors, we also
+know that each general will come to the same decision.
 -----------------------------------------------------
 TASK 1B
 -----------------------------------------------------
 
-G1:             G2:                 G3:                 G4:
-             G1:[A, B,  C]   G1:[D, E,  F]   G1:[G, H,  I]
-Byzantine    G2:[X, G2, G3]  G2:[X, G2, G3]  G2:[X, G2, G3]
-             G3:[Y, G2, G3]  G3:[Y, G2, G3]  G3:[Y, G2, G3]
-             F:[U, U, U]     F:[U, U, U]     F:[U, U, U]
+G1:             G2:             G3:
+             G1:[A, B,  C]   G1:[D, E,  F]
+Byzantine    G2:[X, G2, G3]  G2:[X, G2, G3]
+             G3:[Y, G2, G3]  G3:[Y, G2, G3]
+              F:[U, U,  U]    F:[U, U,  U]
 
-All values can become w/e because the traitor has the power to swing votes: put
-this in fancy terms
+In the scenario where there are only two honest generals and 1 traitor, we can
+make no guarantees regarding any of the values in the final result vectors.
+For instance, when calculating F[2] on G2, a majority vote with the values
+B & G2 will be computed. If B == G2, the result will be G2. Otherwise, the result
+will be Unknown. The same holds for the computation of all other indices. As such,
+there is a possibility that there will be disagreement between G2 and G3.
