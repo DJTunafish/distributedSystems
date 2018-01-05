@@ -184,11 +184,14 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
             vote = ""
             if self.server.vessel_id in self.server.receivedVotes:
-                vote = self.server.receivedVotes[self.server.vessel_id]
+                if self.server.receivedVotes[self.server.vessel_id]:
+                    vote = 'Attack!'
+                else:
+                    vote = 'Retreat!'
             else:
                 vote = "No vote cast"
 
-            html = vote_result_template % (result, vote, str(resultVector))
+            html = vote_result_template % (vote, result, str(resultVector))
 
             self.wfile.write(html)
         else:
@@ -202,8 +205,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
         data = self.parse_POST_request()
 
         if self.path == "/voteRound2":
-            print("Result vector received")
-            print(data)
+            print("Result vector received from " + data['sender'][0])
             #The POST request is from another server that is sending its
             #result vector
             self.parse_result_vector(data)
@@ -214,14 +216,14 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                 self.compute_round_2()
         elif 'generalVote' in data:
             print("Vote received")
-            print(data)
             #The POST request is from another server that is sending its vote
+            #in the first round
             self.receive_vote(data)
 
             print(len(self.server.receivedVotes))
             if len(self.server.receivedVotes) == len(self.server.vessels):
-                #Votes from all servers have been received, calculate result
-                #and send out result vector to all other servers
+                #Votes from all servers have been received,
+                #send out result vector to all other servers
                 self.compute_round_1()
 
                 if len(self.server.receivedResultVectors) == (len(self.server.vessels)):
@@ -254,7 +256,6 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                     dictX[i] = vect[i - 1]
                 dictX['sender'] = self.server.vessel_id
                 dicts.append(dictX)
-            #TODO: Something else as tiebreaker?
             self.server.receivedResultVectors[self.server.vessel_id] = dicts[0]
             self.server.propagate_byzantine("/voteRound2", dicts)
         else:
@@ -273,19 +274,19 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
 
     def compute_round_2(self):
         finalVector = []
-        #Iterate through every index in the resultVectors.
+        print("Compute round 2 result")
+        finalAttackVotes = 0
+        finalRetreatVotes = 0
+
+        #Iterate through every index in the result vectors.
         #For a given index i,starting at 1, check the entries at that index for every
         #result vector, counting the amount of votes for retreat and the votes
         #for attack. For index i, we do not count the vote in the result vector
         #of node i. If there is a majority of votes for either choice, append
         #this result to the final result vector. Otherwise, append None to the
         #final vector, indicating that the result is undecidable.
-        #Further, if index i represents the vote of this node, no voting is perform
+        #Further, if index i represents the vote of this node, no voting is performed
         #and instead the vote of this node is appended to the final vector.
-        print("Compute round 2 result")
-        finalAttackVotes = 0
-        finalRetreatVotes = 0
-
         for i in range(1, len(self.server.vessels) + 1):
             if i == self.server.vessel_id:
                 #Perform no voting to determine vote of local node, instead
@@ -316,7 +317,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                     finalVector.append(None)
 
         self.server.finalResultVector = finalVector
-        if finalAttackVotes > finalRetreatVotes:
+        if finalAttackVotes >= finalRetreatVotes:
             self.server.result = 'Attack!'
             print("CHAAAARGE!")
         else:
