@@ -389,7 +389,7 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
             self.server.propagate_byzantine('/vote', propData)
         else:
             print("Non-acceptable URL for client vote")
-            self.set_HTTP_headers(500)+
+            self.set_HTTP_headers(500)
 
     #Receive a vote from another server
     def receive_vote(self, data):
