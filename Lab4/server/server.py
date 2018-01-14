@@ -264,7 +264,8 @@ class ByzantineRequestHandler(BaseHTTPRequestHandler):
                     dictX[i] = vect[i - 1]
                 dictX['sender'] = self.server.vessel_id
                 dicts.append(dictX)
-            self.server.receivedResultVectors[self.server.vessel_id] = dicts[0]
+
+            self.server.receivedResultVectors[self.server.vessel_id] = vectors[0]
             self.server.propagate_byzantine("/voteRound2", dicts)
         else:
             print("Result vector:")
